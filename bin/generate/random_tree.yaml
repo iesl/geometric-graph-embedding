@@ -1,0 +1,15 @@
+program: scripts/graph-modeling
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - generate
+  - random-tree
+  - ${args}
+method: grid
+project: generate_graphs
+parameters:
+  log_num_nodes:
+    values: [12, 14, 16]
+  seed:
+    values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]

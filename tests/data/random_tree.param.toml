@@ -1,0 +1,3 @@
+type = "random_tree"
+num_nodes = 1000
+transitive_closure = false

@@ -1,0 +1,17 @@
+program: scripts/graph-modeling
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - generate
+  - balanced-tree
+  - --transitive_closure
+  - --outdir=data/graphs13/
+  - ${args}
+method: grid
+project: generate_graphs
+parameters:
+  branching:
+    values: [2, 3, 5, 10]
+  log_num_nodes:
+    values: [13]

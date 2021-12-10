@@ -1,0 +1,19 @@
+program: scripts/graph-modeling
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - generate
+  - ncrp
+  - --no_transitive_closure
+  - ${args}
+method: grid
+project: generate_graphs
+parameters:
+  log_num_nodes:
+    values: [13]
+  alpha:
+    values: [10, 100, 500]
+  seed:
+    values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  

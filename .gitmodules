@@ -1,0 +1,12 @@
+[submodule "lib/box-embeddings"]
+	path = lib/box-embeddings
+	url = https://github.com/iesl/box-embeddings.git
+[submodule "lib/pytorch-utils"]
+	path = lib/pytorch-utils
+	url = https://gitlab.com/boratko/pytorch-utils.git
+[submodule "lib/wandb-utils"]
+	path = lib/wandb-utils
+	url = https://gitlab.com/boratko/wandb-utils.git
+[submodule "libc/snap"]
+	path = libc/snap
+	url = https://github.com/snap-stanford/snap.git

@@ -1,0 +1,30 @@
+program: scripts/graph-modeling
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - train
+  - ${args}
+  - --model_type=box
+  - --log_interval=10000
+  - --log_eval_batch_size=20
+  - --graph_file_stub=data/graphs/scale_free_network-alpha=0.4-gamma=0.5-delta_in=0.2-num_nodes=10000-seed=1-transitive_closure=False-delta_out=0.0
+method: bayes
+metric:
+  goal: maximize
+  name: '[Train] F1'
+parameters:
+  learning_rate:
+    values: [0.001, 0.01]
+  dim:
+    values: [64]
+  log_batch_size:
+    values: [5, 7]
+  negative_weight:
+    values: [0.5, 0.9]
+  negative_ratio:
+    values: [1, 10, 100]
+  box_intersection_temp:
+    values: [0.001, 0.01, 0.1]
+  box_volume_temp:
+    values: [1.0, 0.1]

@@ -1,0 +1,24 @@
+program: scripts/graph-modeling
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - train
+  - ${args}
+  - --log_interval=10000
+  - --graph_file_stub=data/graph/some_name
+method: bayes
+metric:
+  goal: maximize
+  name: '[Valid] F1'
+parameters:
+  epochs:
+    value: 1000
+  learning_rate:
+    distribution: log_uniform
+    max: 0
+    min: -10
+  log_batch_size:
+    values: [6,7,8]
+  log_eval_batch_size:
+    value: 12

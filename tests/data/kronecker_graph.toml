@@ -1,0 +1,8 @@
+type = "kronecker_graph"
+seed = 3179112883
+a = 1.0
+b = 0.8
+c = 0.6
+d = 0.5
+log_num_nodes = 8
+transitive_closure = false

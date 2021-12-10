@@ -1,0 +1,24 @@
+program: scripts/graph-modeling
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - generate
+  - scale-free-network
+  - --outdir=data/graphs13/
+  - ${args}
+method: grid
+project: generate_graphs
+parameters:
+  log_num_nodes:
+    values: [13]
+  alpha:
+    values: [0.1, 0.3]
+  gamma:
+    values: [0.4, 0.6]
+  delta_in:
+    values: [0.0, 1.0]
+  delta_out:
+    values: [0.0, 1.0]
+  seed:
+    values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
