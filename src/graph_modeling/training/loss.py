@@ -13,6 +13,7 @@ __all__ = [
     "MaxMarginWithLogitsNegativeSamplingLoss",
     "MaxMarginOENegativeSamplingLoss",
     "MaxMarginDiskEmbeddingNegativeSamplingLoss",
+    "PushApartPullTogetherLoss",
 ]
 
 
@@ -188,4 +189,57 @@ class MaxMarginDiskEmbeddingNegativeSamplingLoss(Module):
         loss = (1 - self.negative_weight) * (-pos_scores).clamp_min(0).mean(
             dim=-1
         ) + self.negative_weight * (self.margin + neg_scores).clamp_min(0).mean(dim=-1)
+        return loss
+
+
+class PushApartPullTogetherLoss(Module):
+
+    def __init__(self, negative_weight: float = 0.5):
+        super().__init__()
+        self.negative_weight = negative_weight
+
+    def forward(self, inputs: Tensor, *args, **kwargs) -> Tensor:
+        """
+        :param inputs: Tensor of shape (batch_size, 1+K, 2 (y > x, y !> x), 2 (min/max), dim) representing hard
+                      box embedding of two graph vertices, where [...,0,...] is the score for
+                      positive examples and [..., 1:] are scores for negatives.
+        """
+
+        pos_inputs = inputs[:, [0], ...]  # (..., 1, 2 (y > x), 2 (min/max), dim)
+        x_pos = pos_inputs[:, :, 1, ...]  # (..., 1 (x), 2 (min/max), dim)
+        y_pos = pos_inputs[:, :, 0, ...]  # (..., 1 (y), 2 (min/max), dim)
+        u_x_pos = x_pos[..., 0, :]    # (..., 1 (min), dim)
+        v_x_pos = x_pos[..., 1, :]    # (..., 1 (max), dim)
+        u_y_pos = y_pos[..., 0, :]    # (..., 1 (min), dim)
+        v_y_pos = y_pos[..., 1, :]    # (..., 1 (max), dim)
+
+        # positive examples x < y: "pull together loss"
+        loss_pos = torch.max(
+            torch.max(
+                torch.cat([F.relu(u_y_pos - u_x_pos),                              # >0 if lower left of x not inside lower left of y
+                           F.relu(u_x_pos + v_x_pos - u_y_pos - v_y_pos)], dim=1), # >0 if upper right of x not inside upper right of y
+                dim=1)[0],
+            dim=-1)[0]
+
+        neg_inputs = inputs[:, 1:, ...]   # (..., K, 2 (y !> x), 2 (min/max), dim)
+        x_neg = neg_inputs[:, :, [1], ...]  # (..., 1 (x), 2 (min/max), dim)
+        y_neg = neg_inputs[:, :, [0], ...]  # (..., 1 (y), 2 (min/max), dim)
+        u_x_neg = x_neg[..., 0, :]    # (..., 1 (min), dim)
+        v_x_neg = x_neg[..., 1, :]    # (..., 1 (max), dim)
+        u_y_neg = y_neg[..., 0, :]    # (..., 1 (min), dim)
+        v_y_neg = y_neg[..., 1, :]    # (..., 1 (max), dim)
+
+        # negative examples x !< y: "push apart loss"
+        # We incur penalty for only the smallest violation because even the minimal non-containment is
+        #   good enough to say that "x is not a child of y" (for a negative example).
+        loss_neg = torch.sum(
+            torch.min(
+                torch.min(
+                    torch.cat([F.relu(u_x_neg - u_y_neg),                                # >0 if lower left of x inside lower left of y
+                               F.relu(u_y_neg + v_y_neg - u_x_neg - v_x_neg)], dim=-2),  # >0 if upper right of x inside upper right of y
+                    dim=-2)[0],
+                dim=-1)[0],
+            dim=-1)
+
+        loss = loss_pos + self.negative_weight * loss_neg
         return loss

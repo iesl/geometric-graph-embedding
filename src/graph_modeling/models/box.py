@@ -13,6 +13,7 @@ from .. import metric_logger
 __all__ = [
     "BoxMinDeltaSoftplus",
     "TBox",
+    "HardBox",
 ]
 
 
@@ -191,3 +192,31 @@ class TBox(Module):
                 overwrite=True,
             )
         return out
+
+
+class HardBox(Module):
+    """
+    https://arxiv.org/pdf/1805.04690.pdf
+
+    To be used with non-measure-theoretic loss functions such as push-pull loss
+    """
+
+    def __init__(
+        self,
+        num_entities: int,
+        dim: int
+    ):
+        super().__init__()
+        self.boxes = Parameter(
+            torch.sort(torch.randn((num_entities, 2, dim)), dim=-2).values
+            * torch.tensor([1, -1])[None, :, None]
+        )
+
+    def forward(
+        self, idxs: LongTensor
+    ) -> Union[Tuple[Tensor, Dict[str, Tensor]], Tensor]:
+        """
+        :param idxs: Tensor of shape (..., 2) indicating edges, i.e. [...,0] -> [..., 1] is an edge
+        """
+        boxes = self.boxes[idxs]  # shape (..., 2, 2 (min/max), dim)
+        return boxes

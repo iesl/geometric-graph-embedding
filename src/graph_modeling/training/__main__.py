@@ -41,6 +41,7 @@ class IntOrPercent(click.ParamType):
         [
             "tbox",
             "gumbel_box",
+            "hard_box",
             "order_embeddings",
             "partial_order_embeddings",
             "vector_sim",
