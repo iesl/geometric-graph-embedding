@@ -35,9 +35,10 @@ from .loss import (
     BCEWithLogitsNegativeSamplingLoss,
     BCEWithDistancesNegativeSamplingLoss,
     MaxMarginOENegativeSamplingLoss,
+    PushApartPullTogetherLoss,
 )
 from .. import metric_logger
-from ..models.box import BoxMinDeltaSoftplus, TBox
+from ..models.box import BoxMinDeltaSoftplus, TBox, HardBox
 from ..models.hyperbolic import (
     Lorentzian,
     LorentzianDistance,
