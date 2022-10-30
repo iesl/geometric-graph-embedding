@@ -8,6 +8,7 @@ from torch.nn import functional as F
 from wandb_utils.loggers import WandBLogger
 
 from .temps import convert_float_to_const_temp
+from ..utils import tiny_value_of_dtype
 from .. import metric_logger
 
 __all__ = [
@@ -15,6 +16,9 @@ __all__ = [
     "TBox",
     "HardBox",
 ]
+
+
+eps = tiny_value_of_dtype(torch.float)
 
 
 class BoxMinDeltaSoftplus(Module):
@@ -218,5 +222,41 @@ class HardBox(Module):
         """
         :param idxs: Tensor of shape (..., 2) indicating edges, i.e. [...,0] -> [..., 1] is an edge
         """
-        boxes = self.boxes[idxs]  # shape (..., 2, 2 (min/max), dim)
-        return boxes
+
+        boxes = self.boxes[idxs]  # shape (bsz, 2 (y > x), 2 (z/Z), dim)
+        if self.training:
+
+            # produce box embeddings to be used in push-pull loss
+            return boxes
+
+        else:  # self.eval
+
+            y = boxes[..., [0], :, :]  # (bsz, 1 (y), 2 (z/Z), dim)
+            x = boxes[..., [1], :, :]  # (bsz, 1 (x), 2 (z/Z), dim)
+            yz, yZ, xz, xZ = y[..., [0], :], y[..., [1], :], x[..., [0], :], x[..., [1], :]  # (bsz, 1 (x or y), 1 (min or max), dim)
+
+            # compute hard intersection
+            z = torch.max(torch.cat([yz, xz], dim=-2), dim=-2)[0]
+            Z = torch.min(torch.cat([yZ, xZ], dim=-2), dim=-2)[0]
+
+            y_intersection_x_log_vol = torch.squeeze(
+                torch.sum(
+                    torch.log(
+                        F.relu(Z-z)
+                    ).clamp_min(eps),
+                    dim=-1)
+            )
+
+            x_log_vol = torch.squeeze(
+                torch.sum(
+                    torch.log(
+                        F.relu(xZ - xz)
+                    ).clamp_min(eps),
+                    dim=-1
+                )
+            )
+
+            energy = x_log_vol - y_intersection_x_log_vol  # should be 0 if y contains x
+            containment = torch.eq(energy, 0.0).int()  # if entry is 0, y > x
+
+            return containment

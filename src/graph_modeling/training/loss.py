@@ -198,7 +198,7 @@ class PushApartPullTogetherLoss(Module):
         super().__init__()
         self.negative_weight = negative_weight
 
-    def forward(self, inputs: Tensor, reduce=None, *args, **kwargs) -> Tensor:
+    def forward(self, inputs: Tensor, reduce="sum", *args, **kwargs) -> Tensor:
         """
         :param inputs: Tensor of shape (batch_size, 1+K, 2 (y > x or y !> x), 2 (min/max), dim) representing hard
                       box embedding of two graph vertices, where [...,0,...] is the score for
@@ -216,8 +216,10 @@ class PushApartPullTogetherLoss(Module):
 
         # positive examples x < y: "pull together loss"
         if reduce == "sum":
-            loss_pos = torch.sum(torch.cat([F.relu(u_y_pos - u_x_pos),
-                                            F.relu(u_x_pos + v_x_pos - u_y_pos - v_y_pos)], dim=-2), dim=(-1, -2))
+            loss_pos = torch.squeeze(
+                torch.sum(torch.cat([F.relu(u_y_pos - u_x_pos),
+                                     F.relu(u_x_pos + v_x_pos - u_y_pos - v_y_pos)], dim=-2),
+                          dim=(-1, -2)))
         else:
             loss_pos = torch.squeeze(
                 torch.max(
@@ -227,7 +229,7 @@ class PushApartPullTogetherLoss(Module):
                         dim=-2)[0],  # max along min/max axis
                     dim=-1)[0]  # max along dim axis
             )
-        breakpoint()
+
         neg_inputs = inputs[..., 1:, :, :, :]       # (batch_size, K (-), 2 (y !> x), 2 (min/max), dim)
         x_neg = neg_inputs[..., [1], :, :]          # (batch_size, K (-), 1 (x), 2 (min/max), dim)
         y_neg = neg_inputs[..., [0], :, :]          # (batch_size, K (-), 1 (y), 2 (min/max), dim)
@@ -240,8 +242,9 @@ class PushApartPullTogetherLoss(Module):
         # We incur penalty for only the smallest violation because even the minimal non-containment is
         #   good enough to say that "x is not a child of y" (for a negative example).
         if reduce == "sum":
-            loss_neg = torch.sum(torch.cat([F.relu(u_x_neg - u_y_neg),
-                                            F.relu(u_y_neg + v_y_neg - u_x_neg - v_x_neg)], dim=-2), dim=(-1, -2, -4))
+            loss_neg = torch.squeeze(torch.sum(torch.cat([F.relu(u_x_neg - u_y_neg),
+                                                          F.relu(u_y_neg + v_y_neg - u_x_neg - v_x_neg)], dim=-2),
+                                               dim=(-1, -2, -4)))
         else:
             loss_neg = torch.sum(
                 torch.squeeze(
@@ -254,6 +257,6 @@ class PushApartPullTogetherLoss(Module):
                     ),
                 dim=-1  # sum over K negative examples
             )
-        breakpoint()
+
         loss = loss_pos + self.negative_weight * loss_neg
         return loss
