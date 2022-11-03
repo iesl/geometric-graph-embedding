@@ -1,0 +1,26 @@
+program: scripts/graph-modeling
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - train
+  - ${args}
+  - --model_type=hard_box
+  - --log_interval=10000
+  - --log_eval_batch_size=20
+  - --graph_file_stub=data/graphs13/balanced_tree/branching=3-log_num_nodes=13-transitive_closure=True
+method: bayes
+metric:
+  goal: maximize
+  name: '[Train] F1'
+parameters:
+  learning_rate:
+    values: [0.001, 0.01]
+  dim:
+    values: [2, 4, 8, 16, 32, 64]
+  log_batch_size:
+    values: [5, 7]
+  negative_weight:
+    values: [0.5, 0.9]
+  negative_ratio:
+    values: [1, 10, 100]
