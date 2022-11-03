@@ -37,5 +37,4 @@ sbatch -J $job_name \
             --nodes=1 \
             --mem=$mem \
             --array=0-$num_machines \
-            --exclude=node026,node030,node040,node057,node059,node072,node095,node099,node123,node125,node167,node169,node176 \
             bin/run_sweep.sh $sweep_id $threads $max_run
