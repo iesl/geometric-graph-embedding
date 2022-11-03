@@ -223,8 +223,8 @@ class HardBox(Module):
         :param idxs: Tensor of shape (..., 2) indicating edges, i.e. [...,0] -> [..., 1] is an edge
         """
 
-        # (bsz, K+1 (+/-), 2 (y > x), 2 (z/Z), dim) if train
-        # (bsz, 2 (y > x), 2 (z/Z), dim) if inference
+        # (bsz, K+1 (+/-), 2 (y > x), 2 (u/v), dim) if train
+        # (bsz, 2 (y > x), 2 (u/v), dim) if inference
         boxes = self.boxes[idxs]
         if self.training:
 
@@ -233,9 +233,11 @@ class HardBox(Module):
 
         else:  # self.eval
 
-            y = boxes[..., [0], :, :]  # (bsz, 1 (y), 2 (z/Z), dim)
-            x = boxes[..., [1], :, :]  # (bsz, 1 (x), 2 (z/Z), dim)
-            yz, yZ, xz, xZ = y[..., [0], :], y[..., [1], :], x[..., [0], :], x[..., [1], :]  # (bsz, 1 (x|y), 1 (min|max), dim)
+            y = boxes[..., [0], :, :]  # (bsz, 1 (y), 2 (u/v), dim)
+            x = boxes[..., [1], :, :]  # (bsz, 1 (x), 2 (u/v), dim)
+
+            yu, yv, xu, xv = y[..., [0], :], y[..., [1], :], x[..., [0], :], x[..., [1], :]  # (bsz, 1 (x|y), 1 (u|v), dim)
+            yz, yZ, xz, xZ = yu, yu + yv, xu, xu + xv  # (bsz, 1 (x|y), 1 (min|max), dim)
 
             # compute hard intersection
             z = torch.max(torch.cat([yz, xz], dim=-2), dim=-2)[0]  # (bsz, 1, dim)
@@ -265,9 +267,9 @@ class HardBox(Module):
                 )
             )
 
-            # energy := -log(P(y|x)) = -log(V(y&x)/V(x)) = logV(x) - logV(y&x)ß
+            # energy := -log(P(y|x)) = -log(V(y&x)/V(x)) = logV(x) - logV(y&x)
             energy = x_log_vol - y_intersection_x_log_vol  # should be 0 if y contains x
             threshold = 0.1
-            containment = torch.eq(energy, threshold).int()  # if entry is 0, y > x
+            containment = torch.le(energy, threshold).int()  # if entry is 0, y > x
 
             return containment

@@ -198,7 +198,12 @@ class PushApartPullTogetherLoss(Module):
         super().__init__()
         self.negative_weight = negative_weight
 
-    def forward(self, inputs: Tensor, reduce="sum", *args, **kwargs) -> Tensor:
+        ### ADDITIONAL PARAMETERS, IGNORE FOR NOW
+        self.margin = None              # Δ
+        self.stiffness = None           # ψ
+        self.nonlinearity = F.sigmoid   # σ
+
+    def forward(self, inputs: Tensor, reduce=None, *args, **kwargs) -> Tensor:
         """
         :param inputs: Tensor of shape (bsz, 1+K, 2 (y > x or y !> x), 2 (min/max), dim) representing hard
                       box embedding of two graph vertices, where [...,0,...] is the score for
