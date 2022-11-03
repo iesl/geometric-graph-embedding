@@ -223,7 +223,9 @@ class HardBox(Module):
         :param idxs: Tensor of shape (..., 2) indicating edges, i.e. [...,0] -> [..., 1] is an edge
         """
 
-        boxes = self.boxes[idxs]  # shape (bsz, 2 (y > x), 2 (z/Z), dim)
+        # (bsz, K+1 (+/-), 2 (y > x), 2 (z/Z), dim) if train
+        # (bsz, 2 (y > x), 2 (z/Z), dim) if inference
+        boxes = self.boxes[idxs]
         if self.training:
 
             # produce box embeddings to be used in push-pull loss
@@ -233,30 +235,39 @@ class HardBox(Module):
 
             y = boxes[..., [0], :, :]  # (bsz, 1 (y), 2 (z/Z), dim)
             x = boxes[..., [1], :, :]  # (bsz, 1 (x), 2 (z/Z), dim)
-            yz, yZ, xz, xZ = y[..., [0], :], y[..., [1], :], x[..., [0], :], x[..., [1], :]  # (bsz, 1 (x or y), 1 (min or max), dim)
+            yz, yZ, xz, xZ = y[..., [0], :], y[..., [1], :], x[..., [0], :], x[..., [1], :]  # (bsz, 1 (x|y), 1 (min|max), dim)
 
             # compute hard intersection
-            z = torch.max(torch.cat([yz, xz], dim=-2), dim=-2)[0]
-            Z = torch.min(torch.cat([yZ, xZ], dim=-2), dim=-2)[0]
+            z = torch.max(torch.cat([yz, xz], dim=-2), dim=-2)[0]  # (bsz, 1, dim)
+            Z = torch.min(torch.cat([yZ, xZ], dim=-2), dim=-2)[0]  # (bsz, 1, dim)
 
+            # log(Π(d)) -> Σ(log(d))
+            # do clamp_min over relu (non-negative box dimensions) so that log doesn't go to -inf
             y_intersection_x_log_vol = torch.squeeze(
                 torch.sum(
                     torch.log(
-                        F.relu(Z-z)
-                    ).clamp_min(eps),
-                    dim=-1)
+                        F.relu(Z-z).clamp_min(eps)
+                    ),
+                    dim=-1, keepdim=True
+                )
             )
+            """
+            one-line for debugging:
+            torch.squeeze(torch.sum(torch.log(F.relu(Z-z).clamp_min(eps)), dim=-1, keepdim=True))
+            """
 
             x_log_vol = torch.squeeze(
                 torch.sum(
                     torch.log(
-                        F.relu(xZ - xz)
-                    ).clamp_min(eps),
-                    dim=-1
+                        F.relu(xZ - xz).clamp_min(eps)
+                    ),
+                    dim=-1, keepdim=True
                 )
             )
 
+            # energy := -log(P(y|x)) = -log(V(y&x)/V(x)) = logV(x) - logV(y&x)ß
             energy = x_log_vol - y_intersection_x_log_vol  # should be 0 if y contains x
-            containment = torch.eq(energy, 0.0).int()  # if entry is 0, y > x
+            threshold = 0.1
+            containment = torch.eq(energy, threshold).int()  # if entry is 0, y > x
 
             return containment

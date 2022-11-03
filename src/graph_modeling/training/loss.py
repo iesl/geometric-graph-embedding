@@ -200,7 +200,7 @@ class PushApartPullTogetherLoss(Module):
 
     def forward(self, inputs: Tensor, reduce="sum", *args, **kwargs) -> Tensor:
         """
-        :param inputs: Tensor of shape (batch_size, 1+K, 2 (y > x or y !> x), 2 (min/max), dim) representing hard
+        :param inputs: Tensor of shape (bsz, 1+K, 2 (y > x or y !> x), 2 (min/max), dim) representing hard
                       box embedding of two graph vertices, where [...,0,...] is the score for
                       positive examples and [..., 1:] are scores for negatives.
         :param reduce:
@@ -218,25 +218,33 @@ class PushApartPullTogetherLoss(Module):
         if reduce == "sum":
             loss_pos = torch.squeeze(
                 torch.sum(torch.cat([F.relu(u_y_pos - u_x_pos),
-                                     F.relu(u_x_pos + v_x_pos - u_y_pos - v_y_pos)], dim=-2),
-                          dim=(-1, -2)))
+                                     F.relu(u_x_pos + v_x_pos - u_y_pos - v_y_pos)], dim=-2),  # concat along min/max axis
+                          dim=(-1, -2), keepdim=True))  # sum along min/max and dim axes
+            """
+            one-line for debugging:
+            torch.squeeze(torch.sum(torch.cat([F.relu(u_y_pos - u_x_pos), F.relu(u_x_pos + v_x_pos - u_y_pos - v_y_pos)], dim=-2), dim=(-1, -2), keepdim=True))
+            """
         else:
             loss_pos = torch.squeeze(
                 torch.max(
                     torch.max(
                         torch.cat([F.relu(u_y_pos - u_x_pos),
                                    F.relu(u_x_pos + v_x_pos - u_y_pos - v_y_pos)], dim=-2),  # concat along min/max axis
-                        dim=-2)[0],  # max along min/max axis
-                    dim=-1)[0]  # max along dim axis
+                        dim=-2, keepdim=True)[0],  # max along min/max axis
+                    dim=-1, keepdim=True)[0]  # max along dim axis
             )
+            """
+            one-line for debugging:
+            torch.squeeze(torch.max(torch.max(torch.cat([F.relu(u_y_pos - u_x_pos),F.relu(u_x_pos + v_x_pos - u_y_pos - v_y_pos)], dim=-2), dim=-2, keepdim=True)[0], dim=-1, keepdim=True)[0])
+            """
 
-        neg_inputs = inputs[..., 1:, :, :, :]       # (batch_size, K (-), 2 (y !> x), 2 (min/max), dim)
-        x_neg = neg_inputs[..., [1], :, :]          # (batch_size, K (-), 1 (x), 2 (min/max), dim)
-        y_neg = neg_inputs[..., [0], :, :]          # (batch_size, K (-), 1 (y), 2 (min/max), dim)
-        u_x_neg = x_neg[..., [0], :]                # (batch_size, K (-), 1 (x), 1 (min), dim)
-        v_x_neg = x_neg[..., [1], :]                # (batch_size, K (-), 1 (x), 1 (max), dim)
-        u_y_neg = y_neg[..., [0], :]                # (batch_size, K (-), 1 (y), 1 (min), dim)
-        v_y_neg = y_neg[..., [1], :]                # (batch_size, K (-), 1 (y), 1 (max), dim)
+        neg_inputs = inputs[..., 1:, :, :, :]       # (bsz, K (-), 2 (y !> x), 2 (min/max), dim)
+        x_neg = neg_inputs[..., [1], :, :]          # (bsz, K (-), 1 (x), 2 (min/max), dim)
+        y_neg = neg_inputs[..., [0], :, :]          # (bsz, K (-), 1 (y), 2 (min/max), dim)
+        u_x_neg = x_neg[..., [0], :]                # (bsz, K (-), 1 (x), 1 (min), dim)
+        v_x_neg = x_neg[..., [1], :]                # (bsz, K (-), 1 (x), 1 (max), dim)
+        u_y_neg = y_neg[..., [0], :]                # (bsz, K (-), 1 (y), 1 (min), dim)
+        v_y_neg = y_neg[..., [1], :]                # (bsz, K (-), 1 (y), 1 (max), dim)
 
         # negative examples x !< y: "push apart loss"
         # We incur penalty for only the smallest violation because even the minimal non-containment is
@@ -244,19 +252,26 @@ class PushApartPullTogetherLoss(Module):
         if reduce == "sum":
             loss_neg = torch.squeeze(torch.sum(torch.cat([F.relu(u_x_neg - u_y_neg),
                                                           F.relu(u_y_neg + v_y_neg - u_x_neg - v_x_neg)], dim=-2),
-                                               dim=(-1, -2, -4)))
+                                               dim=(-1, -2, -4), keepdim=True))
+            """
+            one-line for debugging:
+            torch.squeeze(torch.sum(torch.cat([F.relu(u_x_neg - u_y_neg), F.relu(u_y_neg + v_y_neg - u_x_neg - v_x_neg)], dim=-2), dim=(-1, -2, -4), keepdim=True)) 
+            """
         else:
-            loss_neg = torch.sum(
-                torch.squeeze(
+            loss_neg = torch.squeeze(
+                torch.sum(
                     torch.min(
                         torch.min(
                             torch.cat([F.relu(u_x_neg - u_y_neg),
                                        F.relu(u_y_neg + v_y_neg - u_x_neg - v_x_neg)], dim=-2),  # concat along min/max axis
-                            dim=-2)[0],  # min along min/max axis
-                        dim=-1)[0],  # min along dim axis
-                    ),
-                dim=-1  # sum over K negative examples
+                            dim=-2, keepdim=True)[0],  # min along min/max axis
+                        dim=-1, keepdim=True)[0],  # min along dim axis
+                    dim=-4, keepdim=True)  # sum over K negative examples
             )
+            """
+            one-line for debugging:
+            torch.sum(torch.squeeze(torch.min(torch.min(torch.cat([F.relu(u_x_neg - u_y_neg), F.relu(u_y_neg + v_y_neg - u_x_neg - v_x_neg)], dim=-2), dim=-2, keepdim=True)[0], dim=-1, keepdim=True)[0]), dim=-1)
+            """
 
         loss = loss_pos + self.negative_weight * loss_neg
         return loss
