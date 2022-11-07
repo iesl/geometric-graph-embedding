@@ -21,6 +21,7 @@ __all__ = [
 eps = tiny_value_of_dtype(torch.float)
 
 
+# TODO rename to BoxCenterDeltaSoftplus
 class BoxMinDeltaSoftplus(Module):
     def __init__(self, num_entity, dim, volume_temp=1.0, intersection_temp=1.0):
         super().__init__()
@@ -211,10 +212,9 @@ class HardBox(Module):
         dim: int
     ):
         super().__init__()
-        self.boxes = Parameter(
-            torch.sort(torch.randn((num_entities, 2, dim)), dim=-2).values
-            * torch.tensor([1, -1])[None, :, None]
-        )
+
+        self.U = Parameter(torch.randn((num_entities, dim)))  # parameter for min
+        self.V = Parameter(torch.randn((num_entities, dim)))  # unconstrained parameter for delta
 
     def forward(
         self, idxs: LongTensor
@@ -223,21 +223,20 @@ class HardBox(Module):
         :param idxs: Tensor of shape (..., 2) indicating edges, i.e. [...,0] -> [..., 1] is an edge
         """
 
-        # (bsz, K+1 (+/-), 2 (y > x), 2 (u/v), dim) if train
-        # (bsz, 2 (y > x), 2 (u/v), dim) if inference
-        boxes = self.boxes[idxs]
+        # (bsz, K+1 (+/-), 2 (y > x), dim) if train
+        # (bsz, 2 (y > x), dim) if inference
+        mins = self.U[idxs]
+        deltas = self.V[idxs] ** 2  # must be > 0
+
         if self.training:
 
             # produce box embeddings to be used in push-pull loss
-            return boxes
+            return torch.stack([mins, deltas], dim=-2)
 
         else:  # self.eval
 
-            y = boxes[..., [0], :, :]  # (bsz, 1 (y), 2 (u/v), dim)
-            x = boxes[..., [1], :, :]  # (bsz, 1 (x), 2 (u/v), dim)
-
-            yu, yv, xu, xv = y[..., [0], :], y[..., [1], :], x[..., [0], :], x[..., [1], :]  # (bsz, 1 (x|y), 1 (u|v), dim)
-            yz, yZ, xz, xZ = yu, yu + yv, xu, xu + xv  # (bsz, 1 (x|y), 1 (min|max), dim)
+            yu, yv, xu, xv = mins[..., [0], :], deltas[..., [0], :], mins[..., [1], :], deltas[..., [1], :]  # (bsz, 1, dim)
+            yz, yZ, xz, xZ = yu, yu + yv, xu, xu + xv  # (bsz, 1, dim)
 
             # compute hard intersection
             z = torch.max(torch.cat([yz, xz], dim=-2), dim=-2)[0]  # (bsz, 1, dim)

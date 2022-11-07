@@ -205,19 +205,19 @@ class PushApartPullTogetherLoss(Module):
 
     def forward(self, inputs: Tensor, reduce=None, *args, **kwargs) -> Tensor:
         """
-        :param inputs: Tensor of shape (bsz, 1+K, 2 (y > x or y !> x), 2 (min/max), dim) representing hard
+        :param inputs: Tensor of shape (bsz, 1+K, 2 (y > x or y !> x), 2 (u/v), dim) representing hard
                       box embedding of two graph vertices, where [...,0,...] is the score for
                       positive examples and [..., 1:] are scores for negatives.
         :param reduce:
         """
 
-        pos_inputs = inputs[..., [0], :, :, :]    # (bsz, 1 (+), 2 (y > x), 2 (min/max), dim)
-        x_pos = pos_inputs[..., [1], :, :]        # (bsz, 1 (+), 1 (x), 2 (min/max), dim)
-        y_pos = pos_inputs[..., [0], :, :]        # (bsz, 1 (+), 1 (y), 2 (min/max), dim)
-        u_x_pos = x_pos[..., [0], :]              # (bsz, 1 (+), 1 (x), 1 (min), dim)
-        v_x_pos = x_pos[..., [1], :]              # (bsz, 1 (+), 1 (x), 1 (max), dim)
-        u_y_pos = y_pos[..., [0], :]              # (bsz, 1 (+), 1 (y), 1 (min), dim)
-        v_y_pos = y_pos[..., [1], :]              # (bsz, 1 (+), 1 (y), 1 (max), dim)
+        pos_inputs = inputs[..., [0], :, :, :]    # (bsz, 1 (+), 2 (y > x), 2 (u/v), dim)
+        x_pos = pos_inputs[..., [1], :, :]        # (bsz, 1 (+), 1 (x), 2 (u/v), dim)
+        y_pos = pos_inputs[..., [0], :, :]        # (bsz, 1 (+), 1 (y), 2 (u/v), dim)
+        u_x_pos = x_pos[..., [0], :]              # (bsz, 1 (+), 1 (x), 1 (u), dim)
+        v_x_pos = x_pos[..., [1], :]              # (bsz, 1 (+), 1 (x), 1 (v), dim)
+        u_y_pos = y_pos[..., [0], :]              # (bsz, 1 (+), 1 (y), 1 (u), dim)
+        v_y_pos = y_pos[..., [1], :]              # (bsz, 1 (+), 1 (y), 1 (v), dim)
 
         # positive examples x < y: "pull together loss"
         if reduce == "sum":
@@ -243,13 +243,13 @@ class PushApartPullTogetherLoss(Module):
             torch.squeeze(torch.max(torch.max(torch.cat([F.relu(u_y_pos - u_x_pos),F.relu(u_x_pos + v_x_pos - u_y_pos - v_y_pos)], dim=-2), dim=-2, keepdim=True)[0], dim=-1, keepdim=True)[0])
             """
 
-        neg_inputs = inputs[..., 1:, :, :, :]       # (bsz, K (-), 2 (y !> x), 2 (min/max), dim)
-        x_neg = neg_inputs[..., [1], :, :]          # (bsz, K (-), 1 (x), 2 (min/max), dim)
-        y_neg = neg_inputs[..., [0], :, :]          # (bsz, K (-), 1 (y), 2 (min/max), dim)
-        u_x_neg = x_neg[..., [0], :]                # (bsz, K (-), 1 (x), 1 (min), dim)
-        v_x_neg = x_neg[..., [1], :]                # (bsz, K (-), 1 (x), 1 (max), dim)
-        u_y_neg = y_neg[..., [0], :]                # (bsz, K (-), 1 (y), 1 (min), dim)
-        v_y_neg = y_neg[..., [1], :]                # (bsz, K (-), 1 (y), 1 (max), dim)
+        neg_inputs = inputs[..., 1:, :, :, :]       # (bsz, K (-), 2 (y !> x), 2 (u/v), dim)
+        x_neg = neg_inputs[..., [1], :, :]          # (bsz, K (-), 1 (x), 2 (u/v), dim)
+        y_neg = neg_inputs[..., [0], :, :]          # (bsz, K (-), 1 (y), 2 (u/v), dim)
+        u_x_neg = x_neg[..., [0], :]                # (bsz, K (-), 1 (x), 1 (u), dim)
+        v_x_neg = x_neg[..., [1], :]                # (bsz, K (-), 1 (x), 1 (v), dim)
+        u_y_neg = y_neg[..., [0], :]                # (bsz, K (-), 1 (y), 1 (u), dim)
+        v_y_neg = y_neg[..., [1], :]                # (bsz, K (-), 1 (y), 1 (v), dim)
 
         # negative examples x !< y: "push apart loss"
         # We incur penalty for only the smallest violation because even the minimal non-containment is
