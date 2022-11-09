@@ -6,7 +6,7 @@ command:
   - train
   - ${args}
   - --model_type=hard_box
-  - --log_interval=0.1
+  - --log_interval=0.2
   - --log_batch_size=7
   - --log_eval_batch_size=20
   - --data_path=data/graphs13/balanced_tree/branching=3-log_num_nodes=13-transitive_closure=True
@@ -21,10 +21,12 @@ parameters:
     min: -9.2
     max: 0
   dim:
-    values: [2, 4, 8, 16, 32, 64]
+    values: [8, 32, 128]
   negative_weight:
     distribution: uniform
     min: 0.5
     max: 0.9
   negative_ratio:
-    values: [100]
+    values: [128]
+  constrain_deltas_fn:
+    values: ['sqr', 'exp', 'softplus']

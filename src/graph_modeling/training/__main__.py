@@ -174,6 +174,12 @@ class IntOrPercent(click.ParamType):
     help="restrict vectors to be parameterized in an annulus from eps to 1-eps",
 )
 @click.option(
+    "--constrain_deltas_fn",
+    type=click.Choice(["sqr", "exp", "softplus"]),
+    default="sqr",
+    help="which function to apply to width parameters of hard_box in order to make them positive"
+)
+@click.option(
     "--box_intersection_temp",
     type=float,
     default=0.01,

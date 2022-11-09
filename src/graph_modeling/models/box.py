@@ -209,12 +209,15 @@ class HardBox(Module):
     def __init__(
         self,
         num_entities: int,
-        dim: int
+        dim: int,
+        constrain_deltas_fn: str
     ):
         super().__init__()
 
         self.U = Parameter(torch.randn((num_entities, dim)))  # parameter for min
         self.V = Parameter(torch.randn((num_entities, dim)))  # unconstrained parameter for delta
+
+        self.constrain_deltas_fn = constrain_deltas_fn  # sqr, exp, softplus
 
     def forward(
         self, idxs: LongTensor
@@ -226,7 +229,13 @@ class HardBox(Module):
         # (bsz, K+1 (+/-), 2 (y > x), dim) if train
         # (bsz, 2 (y > x), dim) if inference
         mins = self.U[idxs]
-        deltas = self.V[idxs] ** 2  # must be > 0
+        deltas = self.V[idxs]  # deltas must be > 0
+        if self.constrain_deltas_fn == "sqr":
+            deltas = deltas ** 2
+        elif self.constrain_deltas_fn == "exp":
+            deltas = torch.exp(deltas)
+        elif self.constrain_deltas_fn == "softplus":
+            deltas = F.softplus(deltas, beta=1, threshold=20)
 
         if self.training:
 

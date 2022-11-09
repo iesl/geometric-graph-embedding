@@ -191,7 +191,8 @@ def setup_model(
     elif model_type == "hard_box":
         model = HardBox(
             num_nodes,
-            config["dim"]
+            config["dim"],
+            constrain_deltas_fn=config["constrain_deltas_fn"]
         )
         loss_func = PushApartPullTogetherLoss(config["negative_weight"])
     elif model_type == "order_embeddings":
