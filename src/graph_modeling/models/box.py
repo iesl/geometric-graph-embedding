@@ -217,7 +217,7 @@ class HardBox(Module):
         self.U = Parameter(torch.randn((num_entities, dim)))  # parameter for min
         self.V = Parameter(torch.randn((num_entities, dim)))  # unconstrained parameter for delta
 
-        self.constrain_deltas_fn = constrain_deltas_fn  # sqr, exp, softplus
+        self.constrain_deltas_fn = constrain_deltas_fn  # sqr, exp, softplus, proj
 
     def forward(
         self, idxs: LongTensor
@@ -231,11 +231,13 @@ class HardBox(Module):
         mins = self.U[idxs]
         deltas = self.V[idxs]  # deltas must be > 0
         if self.constrain_deltas_fn == "sqr":
-            deltas = deltas ** 2
+            deltas = torch.pow(deltas, 2)
         elif self.constrain_deltas_fn == "exp":
             deltas = torch.exp(deltas)
         elif self.constrain_deltas_fn == "softplus":
             deltas = F.softplus(deltas, beta=1, threshold=20)
+        elif self.constrain_deltas_fn == "proj":  # "projected gradient descent" in forward method (just clipping)
+            deltas = deltas.clamp_min(eps)
 
         if self.training:
 

@@ -198,10 +198,9 @@ class PushApartPullTogetherLoss(Module):
         super().__init__()
         self.negative_weight = negative_weight
 
-        ### ADDITIONAL PARAMETERS, IGNORE FOR NOW
-        self.margin = None              # Δ
-        self.stiffness = None           # ψ
-        self.nonlinearity = F.sigmoid   # σ
+        self.margin = torch.nn.Parameter(torch.tensor(5.))              # Δ
+        self.stiffness = torch.nn.Parameter(torch.tensor(5.))           # ψ
+        self.nonlinearity = F.sigmoid                                   # σ
 
     def forward(self, inputs: Tensor, reduce=None, *args, **kwargs) -> Tensor:
         """
@@ -230,13 +229,15 @@ class PushApartPullTogetherLoss(Module):
             torch.squeeze(torch.sum(torch.cat([F.relu(u_y_pos - u_x_pos), F.relu(u_x_pos + v_x_pos - u_y_pos - v_y_pos)], dim=-2), dim=(-1, -2), keepdim=True))
             """
         else:
-            loss_pos = torch.squeeze(
-                torch.max(
+            loss_pos = self.nonlinearity(
+                self.stiffness * torch.squeeze(
                     torch.max(
-                        torch.cat([F.relu(u_y_pos - u_x_pos),
-                                   F.relu(u_x_pos + v_x_pos - u_y_pos - v_y_pos)], dim=-2),  # concat along min/max axis
-                        dim=-2, keepdim=True)[0],  # max along min/max axis
-                    dim=-1, keepdim=True)[0]  # max along dim axis
+                        torch.max(
+                            torch.cat([F.relu(u_y_pos + self.margin - u_x_pos),
+                                       F.relu(u_x_pos + v_x_pos + self.margin - u_y_pos - v_y_pos)], dim=-2),  # concat along min/max axis
+                            dim=-2, keepdim=True)[0],  # max along min/max axis
+                        dim=-1, keepdim=True)[0]  # max along dim axis
+                )
             )
             """
             one-line for debugging:
@@ -265,13 +266,15 @@ class PushApartPullTogetherLoss(Module):
         else:
             loss_neg = torch.squeeze(
                 torch.sum(
-                    torch.min(
-                        torch.min(
-                            torch.cat([F.relu(u_x_neg - u_y_neg),
-                                       F.relu(u_y_neg + v_y_neg - u_x_neg - v_x_neg)], dim=-2),  # concat along min/max axis
+                    self.nonlinearity(
+                        self.stiffness * torch.min(
+                            torch.min(
+                                torch.cat([F.relu(u_x_neg + self.margin - u_y_neg),
+                                           F.relu(u_y_neg + v_y_neg + self.margin - u_x_neg - v_x_neg)], dim=-2),  # concat along min/max axis
                             dim=-2, keepdim=True)[0],  # min along min/max axis
-                        dim=-1, keepdim=True)[0],  # min along dim axis
-                    dim=-4, keepdim=True)  # sum over K negative examples
+                        dim=-1, keepdim=True)[0]    # min along dim axis
+                    ),
+                dim=-4, keepdim=True)  # sum over K negative examples
             )
             """
             one-line for debugging:
