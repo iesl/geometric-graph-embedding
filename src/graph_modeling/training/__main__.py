@@ -175,9 +175,9 @@ class IntOrPercent(click.ParamType):
 )
 @click.option(
     "--constrain_deltas_fn",
-    type=click.Choice(["sqr", "exp", "softplus"]),
+    type=click.Choice(["sqr", "exp", "softplus", "proj"]),
     default="sqr",
-    help="which function to apply to width parameters of hard_box in order to make them positive"
+    help="which function to apply to width parameters of hard_box in order to make them positive, or use projected gradient descent (clipping in forward method)"
 )
 @click.option(
     "--box_intersection_temp",
