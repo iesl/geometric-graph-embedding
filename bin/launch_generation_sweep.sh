@@ -19,7 +19,8 @@ job_name="$model_name-$dataset-$TIME"
 log_dir=logs/$model_name/$dataset/$TIME
 log_base=$log_dir/log
 
-partition='1080ti-short'
+#partition='1080ti-short'
+partition='gypsum-titanx'
 
 mkdir -p $log_dir
 

@@ -41,6 +41,7 @@ class IntOrPercent(click.ParamType):
         [
             "tbox",
             "gumbel_box",
+            "hard_box",
             "order_embeddings",
             "partial_order_embeddings",
             "vector_sim",
@@ -171,6 +172,12 @@ class IntOrPercent(click.ParamType):
     type=float,
     default=0.1,
     help="restrict vectors to be parameterized in an annulus from eps to 1-eps",
+)
+@click.option(
+    "--constrain_deltas_fn",
+    type=click.Choice(["sqr", "exp", "softplus", "proj"]),
+    default="sqr",
+    help="which function to apply to width parameters of hard_box in order to make them positive, or use projected gradient descent (clipping in forward method)"
 )
 @click.option(
     "--box_intersection_temp",
