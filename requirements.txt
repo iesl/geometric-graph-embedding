@@ -1,3 +1,4 @@
+allennlp~=2.9.0
 scipy~=1.7.1
 tqdm~=4.62.3
 wandb~=0.12.7

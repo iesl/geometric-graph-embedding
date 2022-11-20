@@ -18,7 +18,7 @@ def _common_options(func):
     @main.command(context_settings=dict(show_default=True))
     @click.option(
         "--indir",
-        type=click.Path(writeable=False),
+        type=click.Path(),
         help="path to dataset dir",
     )
     @click.option(
