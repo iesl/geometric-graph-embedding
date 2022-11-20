@@ -30,10 +30,14 @@ def write_dataset(out_dir: Union[str, Path], **mlc_config):
     mlc_folder.mkdir(parents=True, exist_ok=True)
     mlc_file_stub = mlc_folder / mlc_config["dataset_name"]
     logger.info(f"Saving to {mlc_file_stub}")
-
-    with mlc_file_stub.with_suffix(".pkl").open("wb") as f:
+    with mlc_file_stub.with_suffix(".pkl").open("wb") as f_pkl:
         pickle.dump({
             "train": data_train,
             "dev": data_dev,
             "test": data_test,
-        }, f, protocol=pickle.HIGHEST_PROTOCOL)
+        }, f_pkl, protocol=pickle.HIGHEST_PROTOCOL)
+    with mlc_file_stub.with_suffix(".toml").open("w") as f_toml:
+        toml.dump({
+            "dataset_name": mlc_config["dataset_name"],
+            "num_labels": mlc_config["num_labels"],
+        }, f_toml)
