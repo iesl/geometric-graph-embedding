@@ -1,4 +1,3 @@
-allennlp~=2.9.0
 scipy~=1.7.1
 tqdm~=4.62.3
 wandb~=0.12.7
@@ -13,3 +12,6 @@ loguru~=0.5.3
 hypothesis~=6.27.1
 pytest~=6.2.5
 click~=8.0.3
+wcmatch~=8.3
+scikit-multilearn
+liac-arff

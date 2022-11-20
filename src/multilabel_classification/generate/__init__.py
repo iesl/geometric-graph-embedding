@@ -23,11 +23,12 @@ def write_dataset(out_dir: Union[str, Path], **mlc_config):
 
     mlc_sub_configs = []
     for name in sorted(mlc_config.keys()):
-        mlc_sub_configs.append(f"{name}={mlc_config[name]}")
+        if name not in ['indir']:
+            mlc_sub_configs.append(f"{name}={mlc_config[name]}")
     mlc_folder_name = "-".join(mlc_sub_configs)
     mlc_folder = out_dir / f"{mlc_folder_name}/"
     mlc_folder.mkdir(parents=True, exist_ok=True)
-    mlc_file_stub = graph_folder / mlc_config["dataset_name"]
+    mlc_file_stub = mlc_folder / mlc_config["dataset_name"]
     logger.info(f"Saving to {mlc_file_stub}")
 
     with mlc_file_stub.with_suffix(".pkl").open("wb") as f:
