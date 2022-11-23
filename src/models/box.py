@@ -8,8 +8,8 @@ from torch.nn import functional as F
 from wandb_utils.loggers import WandBLogger
 
 from .temps import convert_float_to_const_temp
-from ..utils import tiny_value_of_dtype
-from .. import metric_logger
+from utils import tiny_value_of_dtype
+import metric_logger
 
 __all__ = [
     "BoxMinDeltaSoftplus",

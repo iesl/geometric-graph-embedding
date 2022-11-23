@@ -15,7 +15,7 @@ from loguru import logger
 from torch.nn import Module
 from wandb_utils.loggers import WandBLogger
 
-from graph_modeling.models.temps import (
+from models.temps import (
     GlobalTemp,
     PerDimTemp,
     PerEntityTemp,
@@ -37,16 +37,16 @@ from .loss import (
     MaxMarginOENegativeSamplingLoss,
     PushApartPullTogetherLoss,
 )
-from .. import metric_logger
-from ..models.box import BoxMinDeltaSoftplus, TBox, HardBox
-from ..models.hyperbolic import (
+import metric_logger
+from models.box import BoxMinDeltaSoftplus, TBox, HardBox
+from models.hyperbolic import (
     Lorentzian,
     LorentzianDistance,
     LorentzianScore,
     HyperbolicEntailmentCones,
 )
-from ..models.poe import OE, POE
-from ..models.vector import VectorSim, VectorDist, BilinearVector, ComplexVector
+from models.poe import OE, POE
+from models.vector import VectorSim, VectorDist, BilinearVector, ComplexVector
 
 __all__ = [
     "training",
