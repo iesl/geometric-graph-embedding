@@ -28,6 +28,5 @@ setup(
         "price_generation": ["graph_tool"],
         "test": ["pytest", "hypothesis"],
     },
-    entry_points={"console_scripts": ["graph_modeling = graph_modeling.__main__:main",
-                                      "multilabel_classification = multilabel_classification.__main__:main"]},
+    entry_points={"console_scripts": ["box_training_methods = box_training_methods.__main__:main"]},
 )
