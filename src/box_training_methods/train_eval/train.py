@@ -18,7 +18,8 @@ from wandb_utils.loggers import WandBLogger
 
 from pytorch_utils import TensorDataLoader, cuda_if_available
 from pytorch_utils.training import EarlyStopping, ModelCheckpoint
-from .train_looper import TrainLooper
+from .loopers import TrainLooper
+from box_training_methods import metric_logger
 
 
 __all__ = [
@@ -117,9 +118,9 @@ def setup(**config):
     """
 
     if config["task"] == "graph_modeling":
-        from .graph_modeling import train_eval as task_train_eval
+        from box_training_methods.graph_modeling import train_eval as task_train_eval
     elif config["task"] == "multilabel_classification":
-        from .multilabel_classification import train_eval as task_train_eval
+        from box_training_methods.multilabel_classification import train_eval as task_train_eval
 
     device = cuda_if_available(use_cuda=config["cuda"])
 

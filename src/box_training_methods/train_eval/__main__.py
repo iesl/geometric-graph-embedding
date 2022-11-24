@@ -28,10 +28,14 @@ class IntOrPercent(click.ParamType):
             self.fail(f"{value!r} is not a valid integer or float", param, ctx)
 
 
+# TODO weed out the task-specific arguments from here and move them to task-specific train_eval methods
+
 @click.command(context_settings=dict(show_default=True),)
-@click.argument(
+@click.option(
     "--task",
-    type=click.Choice(["graph_modeling", "multilabel_classification"], case_sensitive=False)
+    type=click.Choice(["graph_modeling", "multilabel_classification"], case_sensitive=False),
+    help="task to train on",
+    required=True
 )
 @click.option(
     "--data_path",

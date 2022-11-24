@@ -19,6 +19,7 @@ from pytorch_utils.training import IntervalConditional
 
 __all__ = [
     "TrainLooper",
+    "EvalLooper",
 ]
 
 
@@ -180,3 +181,17 @@ class TrainLooper:
         if best_metric != self.previous_best:
             self.save_model(self.model)
             self.previous_best = best_metric
+
+
+@attr.s(auto_attribs=True)
+class EvalLooper:
+    name: str
+    model: Module
+    dl: DataLoader
+    batchsize: int
+    logger: Logger = attr.ib(factory=Logger)
+    summary_func: Callable[Dict] = lambda z: None
+
+    @torch.no_grad()
+    def loop(self) -> Dict[str, Any]:
+        pass

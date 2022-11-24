@@ -34,7 +34,7 @@ from loguru import logger
 from torch.nn import Module
 from wandb_utils.loggers import WandBLogger
 
-from models.temps import (
+from box_training_methods.models.temps import (
     GlobalTemp,
     PerDimTemp,
     PerEntityTemp,
@@ -48,7 +48,6 @@ from .dataset import (
     RandomNegativeEdges,
     GraphDataset,
 )
-from .loopers import TrainLooper, EvalLooper
 from .loss import (
     BCEWithLogsNegativeSamplingLoss,
     BCEWithLogitsNegativeSamplingLoss,
@@ -56,21 +55,21 @@ from .loss import (
     MaxMarginOENegativeSamplingLoss,
     PushApartPullTogetherLoss,
 )
-import metric_logger
-from ...models.box import BoxMinDeltaSoftplus, TBox, HardBox
-from ...models.hyperbolic import (
+from box_training_methods.models.box import BoxMinDeltaSoftplus, TBox, HardBox
+from box_training_methods.models.hyperbolic import (
     Lorentzian,
     LorentzianDistance,
     LorentzianScore,
     HyperbolicEntailmentCones,
 )
-from ...models.poe import OE, POE
-from ...models.vector import VectorSim, VectorDist, BilinearVector, ComplexVector
+from box_training_methods.models.poe import OE, POE
+from box_training_methods.models.vector import VectorSim, VectorDist, BilinearVector, ComplexVector
+from box_training_methods.train_eval.loopers import EvalLooper
 
 __all__ = [
     "setup_model",
     "setup_training_data",
-    "EvalLooper",
+    "GraphModelingEvalLooper",
 ]
 
 
@@ -209,6 +208,21 @@ def setup_training_data(device: Union[str, torch.device], **config) -> GraphData
     :returns: GraphDataset with appropriate negative sampling, ready for training
     """
     start = time()
+
+    graph = Path(config["data_path"])
+    if graph.is_dir():
+        graphs = list({file.stem for file in graph.glob("*.npz")})
+        logger.info(f"Directory {graph} has {len(graphs)} graph files")
+        selected_graph_name = random.choice(graphs)
+        logger.info(f"Selected graph {selected_graph_name}")
+        config["data_path"] = str(graph / selected_graph_name)
+
+    if config["undirected"] is None:
+        config["undirected"] = config["model_type"] == "lorentzian"
+        logger.debug(
+            f"Setting undirected={config['undirected']} since model_type={config['model_type']}"
+        )
+
     npz_file = Path(config["data_path"] + ".npz")
     tsv_file = Path(config["data_path"] + ".tsv")
     avoid_edges = None
@@ -261,13 +275,7 @@ def setup_training_data(device: Union[str, torch.device], **config) -> GraphData
 
 
 @attr.s(auto_attribs=True)
-class EvalLooper:
-    name: str
-    model: Module
-    dl: DataLoader
-    batchsize: int
-    logger: Logger = attr.ib(factory=Logger)
-    summary_func: Callable[Dict] = lambda z: None
+class GraphModelingEvalLooper(EvalLooper):
 
     @torch.no_grad()
     def loop(self) -> Dict[str, Any]:
