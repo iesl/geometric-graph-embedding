@@ -1,39 +1,26 @@
-"""
-Copied from Dhruvesh Patel's:
-https://github.com/iesl/box-mlc-iclr-2022/blob/main/box_mlc/dataset_readers/arff_reader.py
-"""
+import math
+from pathlib import Path
+from time import time
+import pickle
+from typing import *
 
-"""Dataset reader for multilabel dataset in arff (MEKA) format.
- See `this <http://www.uco.es/kdis/mllresources>`_ for reference."""
-
-from typing import (
-    Dict,
-    List,
-    Any,
-    Iterator,
-    cast,
-    Tuple,
-    Iterable,
-    Optional,
-)
-import sys
-import logging
-import json
+import attr
 import numpy as np
-from skmultilearn.dataset import load_from_arff
 import torch
-from wcmatch import glob
+from loguru import logger
+from torch import Tensor, LongTensor
+from torch.utils.data import Dataset
 
-if sys.version_info >= (3, 8):
-    from typing import (
-        TypedDict,
-    )  # pylint: disable=no-name-in-module
-else:
-    from typing_extensions import TypedDict
-
-logger = logging.getLogger(__name__)
+from skmultilearn.dataset import load_from_arff
 
 
+__all__ = [
+    "ARFFReader"
+    "MLCDataset",
+]
+
+
+# https://github.com/iesl/box-mlc-iclr-2022/blob/main/box_mlc/dataset_readers/arff_reader.py
 class ARFFReader(object):
     """
     Reader for multilabel datasets in MULAN/WEKA/MEKA datasets.
@@ -103,7 +90,7 @@ class ARFFReader(object):
         assert y.shape[-1] == num_total_labels
         all_labels = np.array([l_[0] for l_ in label_names])
         # remove root
-        to_take = np.logical_not(np.in1d(all_labels, self.labels_to_skip)) # shape =(num_labels,), 
+        to_take = np.logical_not(np.in1d(all_labels, self.labels_to_skip)) # shape =(num_labels,),
         # where i = False iff we have to skip
         all_labels = all_labels[to_take]
         data = [
@@ -117,3 +104,38 @@ class ARFFReader(object):
         ]
 
         return data
+
+
+@attr.s(auto_attribs=True)
+class MLCDataset(Dataset):
+    """
+    """
+
+    instances: Tensor
+    labels: Tensor
+    num_labels: int
+    label_encoder: preprocessing.LabelEncoder
+
+    def __attrs_post_init__(self):
+        self._device = self.instances.device
+
+    def __getitem__(self, idxs: LongTensor) -> LongTensor:
+        """
+        :param idxs: LongTensor of shape (...,) indicating the index of the positive edges to select
+        :return: LongTensor of shape (..., 1 + num_negatives, 2) where the positives are located in [:,0,:]
+        """
+        batch_instances, batch_labels = self.instances[idxs], self.labels[idxs]
+        return batch_instances.to(self.device), batch_labels.to(self.device)
+
+    def __len__(self):
+        return len(self.instances)
+
+    @property
+    def device(self):
+        return self._device
+
+    def to(self, device: Union[str, torch.device]):
+        self._device = device
+        self.instances = self.instances.to(device)
+        self.labels = self.labels.to(device)
+        return self

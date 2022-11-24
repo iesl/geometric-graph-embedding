@@ -1,9 +1,8 @@
 import click
 
-from .train_eval.__main__ import train, eval
-
 # graph_modeling is the only task that needs to generate graphs, so treat graph_modeling.generate as top-level group
 from .graph_modeling.generate.__main__ import main as generate
+from .train_eval.__main__ import train, eval
 
 
 @click.group()

@@ -1,3 +1,22 @@
+from __future__ import annotations
+
+import time
+from typing import *
+
+import attr
+import numpy as np
+import torch
+from loguru import logger
+from scipy.sparse import coo_matrix
+from torch.nn import Module
+from torch.utils.data import DataLoader
+from tqdm.autonotebook import trange, tqdm
+
+from pytorch_utils.exceptions import StopLoopingException
+from pytorch_utils.loggers import Logger
+from pytorch_utils.training import IntervalConditional
+from ..metrics import *
+
 import json
 import math
 import os
@@ -38,115 +57,24 @@ from .loss import (
     PushApartPullTogetherLoss,
 )
 import metric_logger
-from models.box import BoxMinDeltaSoftplus, TBox, HardBox
-from models.hyperbolic import (
+from ...models.box import BoxMinDeltaSoftplus, TBox, HardBox
+from ...models.hyperbolic import (
     Lorentzian,
     LorentzianDistance,
     LorentzianScore,
     HyperbolicEntailmentCones,
 )
-from models.poe import OE, POE
-from models.vector import VectorSim, VectorDist, BilinearVector, ComplexVector
+from ...models.poe import OE, POE
+from ...models.vector import VectorSim, VectorDist, BilinearVector, ComplexVector
 
 __all__ = [
-    "training",
-    "setup_training_data",
     "setup_model",
-    "setup",
+    "setup_training_data",
+    "EvalLooper",
 ]
 
 
-def training(config: Dict) -> None:
-    """
-    Setup and run training loop.
-    In this function we do any config manipulation required (eg. override values, set defaults, etc.)
-
-    :param config: config dictionary
-    :return: None
-    """
-
-    if config["seed"] is None:
-        config["seed"] = random.randint(0, 2 ** 32)
-    torch.manual_seed(config["seed"])
-    random.seed(config["seed"])
-    graph = Path(config["data_path"])
-    if graph.is_dir():
-        graphs = list({file.stem for file in graph.glob("*.npz")})
-        logger.info(f"Directory {graph} has {len(graphs)} graph files")
-        selected_graph_name = random.choice(graphs)
-        logger.info(f"Selected graph {selected_graph_name}")
-        config["data_path"] = str(graph / selected_graph_name)
-
-    if config["undirected"] is None:
-        config["undirected"] = config["model_type"] == "lorentzian"
-        logger.debug(
-            f"Setting undirected={config['undirected']} since model_type={config['model_type']}"
-        )
-
-    if config["wandb"]:
-        wandb.init(settings=wandb.Settings(start_method="fork"))
-        wandb.config.update(config, allow_val_change=True)
-        config = wandb.config
-        run_dir = Path(wandb.run.dir)
-    else:
-        run_dir = Path(".")
-
-    dataset, dataloader, model, train_looper = setup(**config)
-
-    if config["wandb"]:
-        metric_logger.metric_logger = WandBLogger()
-        wandb.watch(model)
-        for eval_looper in train_looper.eval_loopers:
-            eval_looper.summary_func = wandb.run.summary.update
-
-    # TODO: refactor so train looper simply imports metric_logger
-    train_looper.logger = metric_logger.metric_logger
-    for eval_looper in train_looper.eval_loopers:
-        eval_looper.logger = train_looper.logger
-
-    model_checkpoint = ModelCheckpoint(run_dir)
-    if isinstance(train_looper, TrainLooper):
-        logger.debug("Will save best model in RAM (but not on disk) for evaluation")
-        train_looper.save_model = model_checkpoint
-
-    metrics, predictions_coo = train_looper.loop(config["epochs"])
-
-    # saving output results
-    if config["output_dir"] == None:
-        output_parent_dir = Path(os.path.dirname(config["data_path"])) / "results"
-    else:
-        output_parent_dir = Path(config["output_dir"])
-    model_string = config["model_type"]
-    if model_string == "tbox":
-        model_string += f"_{config['tbox_temperature_type']}"
-    model_string += f"_{config['dim']}"
-    output_dir = output_parent_dir / model_string
-    output_dir.mkdir(parents=True, exist_ok=True)
-    graph_id = os.path.basename(config["data_path"])
-    random_hex = wandb.run.id if config["wandb"] else uuid.uuid4().hex
-    with open(output_dir / f"{graph_id}_{random_hex}.metric", "w") as f:
-        f.write(json.dumps(dict(config)))
-        f.write("\n")
-        f.write(json.dumps(metrics))
-
-    if config["save_model"]:
-        model_checkpoint.save_to_disk(None)
-
-    if config["save_prediction"]:
-        if len(predictions_coo) > 0 and predictions_coo[0] is not None:
-            filename_pred = f"{output_dir}/{graph_id}_{random_hex}.prediction"
-            scipy.sparse.save_npz(filename_pred, predictions_coo[0])  # check this part
-        else:
-            raise ValueError(
-                "save_prediction was requested, but no predictions returned from training loop"
-            )
-
-    if config["wandb"]:
-        wandb.finish()
-
-    logger.info("Training complete!")
-
-
+# TODO make num_nodes a kwarg
 def setup_model(
     num_nodes: int, device: Union[str, torch.device], **config
 ) -> Tuple[Module, Callable]:
@@ -332,55 +260,75 @@ def setup_training_data(device: Union[str, torch.device], **config) -> GraphData
     return dataset
 
 
-def setup(**config):
-    """
-    Setup and return the datasets, dataloaders, model, and training loop required for training.
+@attr.s(auto_attribs=True)
+class EvalLooper:
+    name: str
+    model: Module
+    dl: DataLoader
+    batchsize: int
+    logger: Logger = attr.ib(factory=Logger)
+    summary_func: Callable[Dict] = lambda z: None
 
-    :param config: config dictionary
-    :return: Tuple of dataset collection, dataloader collection, model, and train looper
-    """
-    device = cuda_if_available(use_cuda=config["cuda"])
+    @torch.no_grad()
+    def loop(self) -> Dict[str, Any]:
+        self.model.eval()
 
-    # setup data
-    train_dataset = setup_training_data(device, **config)
-    dataloader = TensorDataLoader(
-        train_dataset, batch_size=2 ** config["log_batch_size"], shuffle=True
-    )
+        logger.debug("Evaluating model predictions on full adjacency matrix")
+        time1 = time.time()
+        previous_device = next(iter(self.model.parameters())).device
+        num_nodes = self.dl.dataset.num_nodes
+        ground_truth = np.zeros((num_nodes, num_nodes))
+        pos_index = self.dl.dataset.edges.cpu().numpy()
+        # release RAM
+        del self.dl.dataset
 
-    if isinstance(config["log_interval"], float):
-        config["log_interval"] = math.ceil(len(train_dataset) * config["log_interval"])
-    logger.info(f"Log every {config['log_interval']:,} instances")
-    logger.info(f"Stop after {config['patience']:,} logs show no improvement in loss")
+        ground_truth[pos_index[:, 0], pos_index[:, 1]] = 1
 
-    # setup model
-    model, loss_func = setup_model(train_dataset.num_nodes, device, **config)
+        prediction_scores = np.zeros((num_nodes, num_nodes))  # .to(previous_device)
 
-    # setup optimizer
-    opt = torch.optim.Adam(
-        model.parameters(), lr=config["learning_rate"], weight_decay=0.0
-    )
+        input_x, input_y = np.indices((num_nodes, num_nodes))
+        input_x, input_y = input_x.flatten(), input_y.flatten()
+        input_list = np.stack([input_x, input_y], axis=-1)
+        number_of_entries = len(input_x)
 
-    # set Eval Looper
-    eval_loopers = []
-    if config["eval"]:
-        logger.debug(f"After training, will evaluate on full adjacency matrix")
-        eval_loopers.append(
-            EvalLooper(
-                name="Train",  # this is used for logging to describe the dataset, which is the same data as in train
-                model=model,
-                dl=dataloader,
-                batchsize=2 ** config["log_eval_batch_size"],
+        with torch.no_grad():
+            pbar = tqdm(
+                desc=f"[{self.name}] Evaluating", leave=False, total=number_of_entries
             )
-        )
-    train_looper = TrainLooper(
-        name="Train",
-        model=model,
-        dl=dataloader,
-        opt=opt,
-        loss_func=loss_func,
-        eval_loopers=eval_loopers,
-        log_interval=config["log_interval"],
-        early_stopping=EarlyStopping("Loss", config["patience"]),
-    )
+            cur_pos = 0
+            while cur_pos < number_of_entries:
+                last_pos = cur_pos
+                cur_pos += self.batchsize
+                if cur_pos > number_of_entries:
+                    cur_pos = number_of_entries
 
-    return train_dataset, dataloader, model, train_looper
+                ids = torch.tensor(input_list[last_pos:cur_pos], dtype=torch.long)
+                cur_preds = self.model(ids.to(previous_device)).cpu().numpy()
+                prediction_scores[
+                    input_x[last_pos:cur_pos], input_y[last_pos:cur_pos]
+                ] = cur_preds
+                pbar.update(self.batchsize)
+
+        prediction_scores_no_diag = prediction_scores[~np.eye(num_nodes, dtype=bool)]
+        ground_truth_no_diag = ground_truth[~np.eye(num_nodes, dtype=bool)]
+
+        time2 = time.time()
+        logger.debug(f"Evaluation time: {time2 - time1}")
+
+        # TODO: release self.dl from gpu
+        del input_x, input_y
+
+        logger.debug("Calculating optimal F1 score")
+        metrics = calculate_optimal_F1(ground_truth_no_diag, prediction_scores_no_diag)
+        time3 = time.time()
+        logger.debug(f"F1 calculation time: {time3 - time2}")
+        logger.info(f"Metrics: {metrics}")
+
+        self.logger.collect({f"[{self.name}] {k}": v for k, v in metrics.items()})
+        self.logger.commit()
+
+        predictions = (prediction_scores > metrics["threshold"]) * (
+            ~np.eye(num_nodes, dtype=bool)
+        )
+
+        return metrics, coo_matrix(predictions)
