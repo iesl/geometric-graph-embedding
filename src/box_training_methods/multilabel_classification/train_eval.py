@@ -23,17 +23,3 @@ def setup_model():
 
 def setup_training_data(device: Union[str, torch.device], **config) -> MLCDataset:
     pass
-
-
-@attr.s(auto_attribs=True)
-class EvalLooper:
-    name: str
-    model: Module
-    dl: DataLoader
-    batchsize: int
-    logger: Logger = attr.ib(factory=Logger)
-    summary_func: Callable[Dict] = lambda z: None
-
-    @torch.no_grad()
-    def loop(self) -> Dict[str, Any]:
-        pass

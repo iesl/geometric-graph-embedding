@@ -16,6 +16,8 @@ from pytorch_utils.exceptions import StopLoopingException
 from pytorch_utils.loggers import Logger
 from pytorch_utils.training import IntervalConditional
 
+from box_training_methods.metrics import *
+
 
 __all__ = [
     "TrainLooper",
@@ -194,4 +196,64 @@ class EvalLooper:
 
     @torch.no_grad()
     def loop(self) -> Dict[str, Any]:
-        pass
+        self.model.eval()
+
+        logger.debug("Evaluating model predictions on full adjacency matrix")
+        time1 = time.time()
+        previous_device = next(iter(self.model.parameters())).device
+        num_nodes = self.dl.dataset.num_nodes
+        ground_truth = np.zeros((num_nodes, num_nodes))
+        pos_index = self.dl.dataset.edges.cpu().numpy()
+        # release RAM
+        del self.dl.dataset
+
+        ground_truth[pos_index[:, 0], pos_index[:, 1]] = 1
+
+        prediction_scores = np.zeros((num_nodes, num_nodes))  # .to(previous_device)
+
+        input_x, input_y = np.indices((num_nodes, num_nodes))
+        input_x, input_y = input_x.flatten(), input_y.flatten()
+        input_list = np.stack([input_x, input_y], axis=-1)
+        number_of_entries = len(input_x)
+
+        with torch.no_grad():
+            pbar = tqdm(
+                desc=f"[{self.name}] Evaluating", leave=False, total=number_of_entries
+            )
+            cur_pos = 0
+            while cur_pos < number_of_entries:
+                last_pos = cur_pos
+                cur_pos += self.batchsize
+                if cur_pos > number_of_entries:
+                    cur_pos = number_of_entries
+
+                ids = torch.tensor(input_list[last_pos:cur_pos], dtype=torch.long)
+                cur_preds = self.model(ids.to(previous_device)).cpu().numpy()
+                prediction_scores[
+                    input_x[last_pos:cur_pos], input_y[last_pos:cur_pos]
+                ] = cur_preds
+                pbar.update(self.batchsize)
+
+        prediction_scores_no_diag = prediction_scores[~np.eye(num_nodes, dtype=bool)]
+        ground_truth_no_diag = ground_truth[~np.eye(num_nodes, dtype=bool)]
+
+        time2 = time.time()
+        logger.debug(f"Evaluation time: {time2 - time1}")
+
+        # TODO: release self.dl from gpu
+        del input_x, input_y
+
+        logger.debug("Calculating optimal F1 score")
+        metrics = calculate_optimal_F1(ground_truth_no_diag, prediction_scores_no_diag)
+        time3 = time.time()
+        logger.debug(f"F1 calculation time: {time3 - time2}")
+        logger.info(f"Metrics: {metrics}")
+
+        self.logger.collect({f"[{self.name}] {k}": v for k, v in metrics.items()})
+        self.logger.commit()
+
+        predictions = (prediction_scores > metrics["threshold"]) * (
+            ~np.eye(num_nodes, dtype=bool)
+        )
+
+        return metrics, coo_matrix(predictions)

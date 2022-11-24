@@ -18,7 +18,7 @@ from wandb_utils.loggers import WandBLogger
 
 from pytorch_utils import TensorDataLoader, cuda_if_available
 from pytorch_utils.training import EarlyStopping, ModelCheckpoint
-from .loopers import TrainLooper
+from .loopers import TrainLooper, EvalLooper
 from box_training_methods import metric_logger
 
 
@@ -152,7 +152,8 @@ def setup(**config):
         # TODO non-graph-specific eval message here
         logger.debug(f"After training, will evaluate on full adjacency matrix")
         eval_loopers.append(
-            task_train_eval.EvalLooper(
+            # TODO make sure EvalLooper uses task-specific functionality defined inside task's train_eval.py
+            EvalLooper(
                 name="Train",  # this is used for logging to describe the dataset, which is the same data as in train
                 model=model,
                 dl=dataloader,
