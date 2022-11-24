@@ -17,7 +17,7 @@ def write_graph(out_dir: Union[str, Path], **graph_config):
     out_dir = Path(out_dir).expanduser()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    graph_module = import_module("graph_modeling.generate." + graph_config["type"])
+    graph_module = import_module("box_training_methods.graph_modeling.generate." + graph_config["type"])
 
     logger.info("Generating graph with the following config:\n" + pformat(graph_config))
     tree = graph_module.generate(**graph_config)

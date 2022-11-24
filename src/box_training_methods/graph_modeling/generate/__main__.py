@@ -8,7 +8,7 @@ from . import write_graph
 
 @click.group()
 def main():
-    """Graph generation commands"""
+    """Graph generation commands for graph modeling task"""
     pass
 
 

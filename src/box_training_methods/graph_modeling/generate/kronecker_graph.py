@@ -14,7 +14,7 @@ __all__ = [
 
 
 FILE_DIR = Path(os.path.realpath(__file__)).parent
-KRONECKER_BINARY_LOCATION = FILE_DIR / "../../../libc/snap/examples/krongen/krongen"
+KRONECKER_BINARY_LOCATION = FILE_DIR / "../../../../libc/snap/examples/krongen/krongen"
 
 if not KRONECKER_BINARY_LOCATION.exists():
     logger.warning(

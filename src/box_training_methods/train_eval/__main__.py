@@ -214,7 +214,7 @@ class IntOrPercent(click.ParamType):
     help="whether or not to save the model to disk",
 )
 def train(**config):
-    """Train a graph embedding representation"""
+    """Train an embedding representation on a task with boxes"""
     from .train import training
 
     training(config)
@@ -222,4 +222,5 @@ def train(**config):
 
 @click.command(context_settings=dict(show_default=True),)
 def eval():
+    """Evaluate an embedding representation on a task with boxes"""
     pass

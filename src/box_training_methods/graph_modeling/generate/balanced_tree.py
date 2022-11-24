@@ -1,6 +1,6 @@
 import networkx as nx
 
-from graph_modeling.generate.generic import convert_to_outtree
+from .generic import convert_to_outtree
 
 __all__ = [
     "generate",
