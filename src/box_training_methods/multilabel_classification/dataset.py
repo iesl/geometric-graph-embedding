@@ -6,18 +6,40 @@ from typing import *
 
 import attr
 import numpy as np
+import pandas as pd
 import torch
 from loguru import logger
+from wcmatch import glob
 from torch import Tensor, LongTensor
 from torch.utils.data import Dataset
 
 from skmultilearn.dataset import load_from_arff
-
+from sklearn.preprocessing import LabelEncoder
 
 __all__ = [
-    "ARFFReader"
-    "MLCDataset",
+    "edges_from_hierarchy_edge_list",
+    "ARFFReader",
+    "InstanceLabelsDataset",
 ]
+
+
+def edges_from_hierarchy_edge_list(edge_file: Union[Path, str]) -> Tuple[LongTensor, LabelEncoder]:
+    """
+    Loads edges from a given tsv file into a PyTorch LongTensor.
+    Meant for importing data where each edge appears as a line in the file, with
+        <child_id>\t<parent_id>\t{}
+
+    :param edge_file: Path of dataset's hierarchy{_tc}.edge_list
+    :returns: PyTorch LongTensor of edges with shape (num_edges, 2), LabelEncoder that numerized labels
+    """
+    start = time()
+    logger.info(f"Loading edges from {edge_file}...")
+    edges = pd.read_csv(edge_file, sep=" ", header=None).to_numpy()[:, :2]  # ignore line-final "{}"
+    # edges[:, [0, 1]] = edges[:, [1, 0]]  # (child, parent) -> (parent, child)
+    le = LabelEncoder()
+    edges = torch.tensor(le.fit_transform(edges.flatten()).reshape((-1,2)))
+    logger.info(f"Loading complete, took {time() - start:0.1f} seconds")
+    return edges, le
 
 
 # https://github.com/iesl/box-mlc-iclr-2022/blob/main/box_mlc/dataset_readers/arff_reader.py
@@ -107,14 +129,13 @@ class ARFFReader(object):
 
 
 @attr.s(auto_attribs=True)
-class MLCDataset(Dataset):
+class InstanceLabelsDataset(Dataset):
     """
     """
 
     instances: Tensor
     labels: Tensor
-    num_labels: int
-    label_encoder: preprocessing.LabelEncoder
+    label_encoder: LabelEncoder
 
     def __attrs_post_init__(self):
         self._device = self.instances.device
