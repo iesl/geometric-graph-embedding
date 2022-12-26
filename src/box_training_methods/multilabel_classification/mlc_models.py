@@ -12,8 +12,7 @@ from box_training_methods.utils import tiny_value_of_dtype
 from box_training_methods import metric_logger
 
 __all__ = [
-    "BoxMinDeltaSoftplus",
-    "TBox",
+    "InstanceEncoder",
     "HardBox",
 ]
 
