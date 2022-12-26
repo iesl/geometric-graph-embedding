@@ -14,7 +14,7 @@ from torch import Tensor, LongTensor
 from torch.utils.data import Dataset
 
 from skmultilearn.dataset import load_from_arff
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, MultiLabelBinarizer
 
 __all__ = [
     "edges_from_hierarchy_edge_list",
@@ -135,18 +135,25 @@ class InstanceLabelsDataset(Dataset):
 
     instances: Tensor
     labels: Tensor
-    label_encoder: LabelEncoder
+    label_set: list
+    label_format: str = "one-hot"  # "stochastic?", "padded?", "one-hot"
 
     def __attrs_post_init__(self):
         self._device = self.instances.device
+        if self.label_format == "one-hot":
+            self._label_encoder = MultiLabelBinarizer()
+            self._label_encoder.fit([self.label_set])
+            self.one_hot_labels = self._label_encoder.transform(self.labels)
+        else:
+            raise NotImplementedError("Only one-hot label encodings currently supported for instances dataloader!")
 
     def __getitem__(self, idxs: LongTensor) -> LongTensor:
         """
-        :param idxs: LongTensor of shape (...,) indicating the index of the positive edges to select
+        :param idxs: LongTensor of shape (...,) indicating the index of the examples which to select
         :return: LongTensor of shape (..., 1 + num_negatives, 2) where the positives are located in [:,0,:]
         """
-        batch_instances, batch_labels = self.instances[idxs], self.labels[idxs]
-        return batch_instances.to(self.device), batch_labels.to(self.device)
+        batch_instances, batch_labels = self.instances[idxs], self.one_hot_labels[idxs]
+        return batch_instances.to(self.device), self._label_encoder.transform(batch_labels).to(self.device)
 
     def __len__(self):
         return len(self.instances)
@@ -158,5 +165,5 @@ class InstanceLabelsDataset(Dataset):
     def to(self, device: Union[str, torch.device]):
         self._device = device
         self.instances = self.instances.to(device)
-        self.labels = self.labels.to(device)
+        # self.labels = self.labels.to(device)
         return self
