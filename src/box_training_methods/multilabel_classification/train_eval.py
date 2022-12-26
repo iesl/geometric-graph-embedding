@@ -6,10 +6,21 @@ import toml
 from pathlib import Path
 
 import torch
+from torch.nn import Module
 from pytorch_utils import TensorDataLoader, cuda_if_available
 
 from .dataset import edges_from_hierarchy_edge_list, ARFFReader, InstanceLabelsDataset
 from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, GraphDataset
+
+from box_training_methods.models.box import BoxMinDeltaSoftplus, TBox, HardBox
+from box_training_methods.graph_modeling.loss import (
+    BCEWithLogsNegativeSamplingLoss,
+    BCEWithLogitsNegativeSamplingLoss,
+    BCEWithDistancesNegativeSamplingLoss,
+    MaxMarginOENegativeSamplingLoss,
+    PushApartPullTogetherLoss,
+)
+
 
 __all__ = [
     "setup_model",
@@ -18,8 +29,56 @@ __all__ = [
 ]
 
 
-def setup_model():
-    pass
+def setup_model(num_labels: int, device: Union[str, torch.device], **config) -> Tuple[Module, Callable]:
+    model_type = config["model_type"].lower()
+    if model_type == "gumbel_box":
+        model = BoxMinDeltaSoftplus(
+            num_labels,
+            config["dim"],
+            volume_temp=config["box_volume_temp"],
+            intersection_temp=config["box_intersection_temp"],
+        )
+        loss_func = BCEWithLogsNegativeSamplingLoss(config["negative_weight"])
+    elif model_type == "tbox":
+        temp_type = {
+            "global": GlobalTemp,
+            "per_dim": PerDimTemp,
+            "per_entity": PerEntityTemp,
+            "per_entity_per_dim": PerEntityPerDimTemp,
+        }
+        Temp = temp_type[config["tbox_temperature_type"]]
+
+        model = TBox(
+            num_labels,
+            config["dim"],
+            intersection_temp=Temp(
+                config["box_intersection_temp"],
+                0.0001,
+                100,
+                dim=config["dim"],
+                num_entities=num_nodes,
+            ),
+            volume_temp=Temp(
+                config["box_volume_temp"],
+                0.01,
+                1000,
+                dim=config["dim"],
+                num_entities=num_nodes,
+            ),
+        )
+        loss_func = BCEWithLogsNegativeSamplingLoss(config["negative_weight"])
+    elif model_type == "hard_box":
+        model = HardBox(
+            num_labels,
+            config["dim"],
+            constrain_deltas_fn=config["constrain_deltas_fn"]
+        )
+        loss_func = PushApartPullTogetherLoss(config["negative_weight"])
+    else:
+        raise ValueError(f"Model type {config['model_type']} does not exist")
+    model.to(device)
+
+    return model, loss_func
 
 
 def setup_training_data(device: Union[str, torch.device], **config) -> InstanceLabelsDataset:
@@ -38,8 +97,9 @@ def setup_training_data(device: Union[str, torch.device], **config) -> InstanceL
     hierarchy_edge_list_file = data_dir / "hierarchy.edgelist"
 
     # 1. read label taxonomy into GraphDataset
-    taxnonomy_edges, label_encoder = edges_from_hierarchy_edge_list(edge_file=hierarchy_edge_list_file)
-    num_labels = len(label_encoder.classes_)
+    taxnonomy_edges, taxonomy_label_encoder = edges_from_hierarchy_edge_list(edge_file=hierarchy_edge_list_file)
+    label_set = taxonomy_label_encoder.classes_
+    num_labels = len(label_set)
     negative_sampler = RandomNegativeEdges(
         num_nodes=num_labels,
         negative_ratio=config["negative_ratio"],
@@ -54,16 +114,22 @@ def setup_training_data(device: Union[str, torch.device], **config) -> InstanceL
 
     # 2. read instance-labels into InstanceLabelsDataset
     reader = ARFFReader(num_labels=num_labels)
+
     data_train = list(reader.read_internal(str(data_dir / "train-normalized.arff")))
+    instances_train = torch.tensor([i['x'] for i in data_train], device=device)
+    labels_train = [i['labels'] for i in data_train]
+
     data_dev = list(reader.read_internal(str(data_dir / "dev-normalized.arff")))
+    instances_dev = torch.tensor([i['x'] for i in data_dev], device=device)
+    labels_dev = [i['labels'] for i in data_dev]
+
     data_test = list(reader.read_internal(str(data_dir / "test-normalized.arff")))
+    instances_test = torch.tensor([i['x'] for i in data_test], device=device)
+    labels_test = [i['labels'] for i in data_test]
 
-    breakpoint()
-    train_dataset = InstanceLabelsDataset(
-        # TODO!!!
-    )
-    breakpoint()
-
+    train_dataset = InstanceLabelsDataset(instances=instances_train, labels=labels_train, label_set=label_set)
+    dev_dataset = InstanceLabelsDataset(instances=instances_dev, labels=labels_dev, label_set=label_set)
+    test_dataset = InstanceLabelsDataset(instances=instances_test, labels=labels_test, label_set=label_set)
 
     # logger.info(f"Number of edges in dataset: {dataset.num_edges:,}")
     # logger.info(f"Number of edges to avoid: {len(avoid_edges):,}")
@@ -75,4 +141,4 @@ def setup_training_data(device: Union[str, torch.device], **config) -> InstanceL
     # logger.info(f"Number of labels in dataset: {dataset.num_labels:,}")
     # logger.debug(f"Total time spent loading data: {time() - start:0.1f} seconds")
     #
-    # return dataset
+    return taxonomy_dataset, train_dataset, dev_dataset, test_dataset
