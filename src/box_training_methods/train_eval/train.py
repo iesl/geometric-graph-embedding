@@ -70,8 +70,6 @@ def training(config: Dict) -> None:
         logger.debug("Will save best model in RAM (but not on disk) for evaluation")
         train_looper.save_model = model_checkpoint
 
-    breakpoint()
-
     # TODO standardize what the train_looper returns across tasks - what is predictions_coo?
     metrics, predictions_coo = train_looper.loop(config["epochs"])
 
