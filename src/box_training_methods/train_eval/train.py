@@ -18,7 +18,7 @@ from wandb_utils.loggers import WandBLogger
 
 from pytorch_utils import TensorDataLoader, cuda_if_available
 from pytorch_utils.training import EarlyStopping, ModelCheckpoint
-from .loopers import TrainLooper, EvalLooper
+from .loopers import TrainLooper, GraphModelingEvalLooper, MultilabelClassificationEvalLooper
 from box_training_methods import metric_logger
 
 
@@ -51,7 +51,8 @@ def training(config: Dict) -> None:
     random.seed(config["seed"])
 
     # TODO setup imports task-specific setup methods located within each task's train_eval.py
-    dataset, dataloader, model, train_looper = setup(**config)
+    model, train_looper = setup(**config)
+    # TODO dataset and dataloader aren't used in this function. Have setup(**config) return just model, train_looper?
 
     if config["wandb"]:
         metric_logger.metric_logger = WandBLogger()
@@ -68,6 +69,8 @@ def training(config: Dict) -> None:
     if isinstance(train_looper, TrainLooper):
         logger.debug("Will save best model in RAM (but not on disk) for evaluation")
         train_looper.save_model = model_checkpoint
+
+    breakpoint()
 
     # TODO standardize what the train_looper returns across tasks - what is predictions_coo?
     metrics, predictions_coo = train_looper.loop(config["epochs"])
@@ -126,10 +129,17 @@ def setup(**config):
 
     # setup data
     # TODO task-specific setup_training_data
-    train_dataset = task_train_eval.setup_training_data(device, **config)
-    dataloader = TensorDataLoader(
-        train_dataset, batch_size=2 ** config["log_batch_size"], shuffle=True
-    )
+    if config["task"] == "graph_modeling":
+        train_dataset = task_train_eval.setup_training_data(device, **config)
+        train_dataloader = TensorDataLoader(
+            train_dataset, batch_size=2 ** config["log_batch_size"], shuffle=True
+        )
+    elif config["task"] == "multilabel_classification":
+        taxonomy_dataset, train_dataset, dev_dataset, test_dataset = task_train_eval.setup_training_data(device, **config)
+        taxonomy_dataloader = TensorDataLoader(taxonomy_dataset, batch_size=2 ** config["log_batch_size"], shuffle=True)
+        train_dataloader = TensorDataLoader(train_dataset, batch_size=2 ** config["log_batch_size"], shuffle=True)
+        dev_dataloader = TensorDataLoader(dev_dataset, batch_size=2 ** config["log_batch_size"], shuffle=False)
+        test_dataloader = TensorDataLoader(test_dataset, batch_size=2 ** config["log_batch_size"], shuffle=False)
 
     if isinstance(config["log_interval"], float):
         config["log_interval"] = math.ceil(len(train_dataset) * config["log_interval"])
@@ -139,7 +149,10 @@ def setup(**config):
     # setup model
     # TODO task-specific setup_model
     # TODO remove num_nodes explicit arg from setup_model API
-    model, loss_func = task_train_eval.setup_model(train_dataset.num_nodes, device, **config)
+    if config["task"] == "graph_modeling":
+        model, loss_func = task_train_eval.setup_model(train_dataset.num_nodes, device, **config)
+    elif config["task"] == "multilabel_classification":
+        model, loss_func = task_train_eval.setup_model(taxonomy_dataset.num_nodes, device, **config)
 
     # setup optimizer
     opt = torch.optim.Adam(
@@ -149,21 +162,35 @@ def setup(**config):
     # set Eval Looper
     eval_loopers = []
     if config["eval"]:
-        # TODO non-graph-specific eval message here
-        logger.debug(f"After training, will evaluate on full adjacency matrix")
-        eval_loopers.append(
-            # TODO make sure EvalLooper uses task-specific functionality defined inside task's train_eval.py
-            EvalLooper(
-                name="Train",  # this is used for logging to describe the dataset, which is the same data as in train
-                model=model,
-                dl=dataloader,
-                batchsize=2 ** config["log_eval_batch_size"],
+        if config["task"] == "graph_modeling":
+            logger.debug(f"After training, will evaluate on full adjacency matrix")
+            eval_loopers.append(
+                GraphModelingEvalLooper(
+                    name="Train",  # this is used for logging to describe the dataset, which is the same data as in train
+                    model=model,
+                    dl=train_dataloader,
+                    batchsize=2 ** config["log_eval_batch_size"],
+                )
             )
-        )
+        elif config["task"] == "multilabel_classification":
+            eval_loopers.extend([
+                MultilabelClassificationEvalLooper(
+                    name="Validation",
+                    model=model,
+                    dl=dev_dataloader,
+                    batchsize=2 ** config["log_eval_batch_size"],
+                ),
+                MultilabelClassificationEvalLooper(
+                    name="Test",
+                    model=model,
+                    dl=test_dataloader,
+                    batchsize=2 ** config["log_eval_batch_size"],
+                )
+            ])
     train_looper = TrainLooper(
         name="Train",
         model=model,
-        dl=dataloader,
+        dl=train_dataloader,
         opt=opt,
         loss_func=loss_func,
         eval_loopers=eval_loopers,
@@ -171,4 +198,4 @@ def setup(**config):
         early_stopping=EarlyStopping("Loss", config["patience"]),
     )
 
-    return train_dataset, dataloader, model, train_looper
+    return model, train_looper
