@@ -13,53 +13,45 @@ from box_training_methods import metric_logger
 
 __all__ = [
     "InstanceEncoder",
-    "HardBox",
 ]
 
 
 class InstanceEncoder(Module):
 
+    def __init__(self, input_dim=77, hidden_dim=64):
+        super().__init__()
+        self.l1 = torch.nn.Linear(input_dim, hidden_dim)
+        self.proj_min = torch.nn.Linear(hidden_dim, 1)
+        self.proj_delta = torch.nn.Linear(hidden_dim, 1)
+
+    def forward(self, X):
+        """
+
+        Args:
+            X: (batch_size, instance_dim)
+
+        Returns:
+
+        """
+        h = F.sigmoid(self.l1(X))
+        min, delta = self.proj_min(h), self.proj_delta(h)
+        breakpoint()
+        return min, delta
+
+
+class Scorer(Module):
+
     def __init__(self):
         super().__init__()
 
-    def forward(self):
-        pass
-
-
-class HardBox(Module):
-
-    def __init__(
-        self,
-        num_labels: int,
-        dim: int,
-        constrain_deltas_fn: str
-    ):
-        super().__init__()
-
-        self.U = Parameter(torch.randn((num_labels, dim)))  # parameter for min
-        self.V = Parameter(torch.randn((num_labels, dim)))  # unconstrained parameter for delta
-
-        self.constrain_deltas_fn = constrain_deltas_fn  # sqr, exp, softplus, proj
-
-    def forward(
-        self, idxs: LongTensor
-    ) -> Union[Tuple[Tensor, Dict[str, Tensor]], Tensor]:
-        """
-        :param idxs: Tensor of shape (..., 2) indicating edges, i.e. [...,0] -> [..., 1] is an edge
+    def forward(self, x, label_one_hots, label_boxes):
         """
 
-        # (bsz, K+1 (+/-), 2 (y > x), dim) if train
-        # (bsz, 2 (y > x), dim) if inference
-        mins = self.U[idxs]
-        deltas = self.V[idxs]  # deltas must be > 0
-        if self.constrain_deltas_fn == "sqr":
-            deltas = torch.pow(deltas, 2)
-        elif self.constrain_deltas_fn == "exp":
-            deltas = torch.exp(deltas)
-        elif self.constrain_deltas_fn == "softplus":
-            deltas = F.softplus(deltas, beta=1, threshold=20)
-        elif self.constrain_deltas_fn == "proj":  # "projected gradient descent" in forward method (just clipping)
-            deltas = deltas.clamp_min(eps)
+        Args:
+            x: vector or box embedding of instance (produced by InstanceEncoder):       (..., 2 [if box])
+            label_one_hots: one-hot vectors representing true labels for each instance: (..., num_labels)
+            label_boxes: boxes for each label in taxonomy:                              (..., 2 [min/max])
 
-        # produce box embeddings to be used in push-pull loss
-        return torch.stack([mins, deltas], dim=-2)
+        Returns: nll
+
+        """

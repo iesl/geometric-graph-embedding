@@ -18,7 +18,8 @@ from wandb_utils.loggers import WandBLogger
 
 from pytorch_utils import TensorDataLoader, cuda_if_available
 from pytorch_utils.training import EarlyStopping, ModelCheckpoint
-from .loopers import TrainLooper, GraphModelingEvalLooper, MultilabelClassificationEvalLooper
+from .loopers import GraphModelingTrainLooper, MultilabelClassificationTrainLooper,\
+    GraphModelingEvalLooper, MultilabelClassificationEvalLooper
 from box_training_methods import metric_logger
 
 
@@ -66,7 +67,8 @@ def training(config: Dict) -> None:
         eval_looper.logger = train_looper.logger
 
     model_checkpoint = ModelCheckpoint(run_dir)
-    if isinstance(train_looper, TrainLooper):
+    if isinstance(train_looper, GraphModelingTrainLooper) or \
+            isinstance(train_looper, MultilabelClassificationTrainLooper):
         logger.debug("Will save best model in RAM (but not on disk) for evaluation")
         train_looper.save_model = model_checkpoint
 
@@ -150,7 +152,7 @@ def setup(**config):
     if config["task"] == "graph_modeling":
         model, loss_func = task_train_eval.setup_model(train_dataset.num_nodes, device, **config)
     elif config["task"] == "multilabel_classification":
-        model, loss_func = task_train_eval.setup_model(taxonomy_dataset.num_nodes, device, **config)
+        box_model, loss_func = task_train_eval.setup_model(taxonomy_dataset.num_nodes, device, **config)
 
     # setup optimizer
     opt = torch.optim.Adam(
@@ -185,15 +187,28 @@ def setup(**config):
                     batchsize=2 ** config["log_eval_batch_size"],
                 )
             ])
-    train_looper = TrainLooper(
-        name="Train",
-        model=model,
-        dl=train_dataloader,
-        opt=opt,
-        loss_func=loss_func,
-        eval_loopers=eval_loopers,
-        log_interval=config["log_interval"],
-        early_stopping=EarlyStopping("Loss", config["patience"]),
-    )
+    if config["task"] == "graph_modeling":
+        train_looper = GraphModelingTrainLooper(
+            name="Train",
+            model=model,
+            dl=train_dataloader,
+            opt=opt,
+            loss_func=loss_func,
+            eval_loopers=eval_loopers,
+            log_interval=config["log_interval"],
+            early_stopping=EarlyStopping("Loss", config["patience"]),
+        )
+    elif config["task"] == "multilabel_classification":
+        train_looper = MultilabelClassificationTrainLooper(
+            name="Train",
+            box_model=model,
+            instance_label_dl=train_dataloader,
+            label_label_dl=taxonomy_dataloader,
+            opt=opt,
+            loss_func=loss_func,
+            eval_loopers=eval_loopers,
+            log_interval=config["log_interval"],
+            early_stopping=EarlyStopping("Loss", config["patience"]),
+        )
 
     return model, train_looper

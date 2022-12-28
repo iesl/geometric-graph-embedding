@@ -20,6 +20,7 @@ from box_training_methods.graph_modeling.loss import (
     MaxMarginOENegativeSamplingLoss,
     PushApartPullTogetherLoss,
 )
+from .mlc_models import InstanceEncoder
 
 
 __all__ = [
@@ -32,13 +33,13 @@ __all__ = [
 def setup_model(num_labels: int, device: Union[str, torch.device], **config) -> Tuple[Module, Callable]:
     model_type = config["model_type"].lower()
     if model_type == "gumbel_box":
-        model = BoxMinDeltaSoftplus(
+        box_model = BoxMinDeltaSoftplus(
             num_labels,
             config["dim"],
             volume_temp=config["box_volume_temp"],
             intersection_temp=config["box_intersection_temp"],
         )
-        loss_func = BCEWithLogsNegativeSamplingLoss(config["negative_weight"])
+        label_label_loss_func = BCEWithLogsNegativeSamplingLoss(config["negative_weight"])
     elif model_type == "tbox":
         temp_type = {
             "global": GlobalTemp,
@@ -48,7 +49,7 @@ def setup_model(num_labels: int, device: Union[str, torch.device], **config) -> 
         }
         Temp = temp_type[config["tbox_temperature_type"]]
 
-        model = TBox(
+        box_model = TBox(
             num_labels,
             config["dim"],
             intersection_temp=Temp(
@@ -66,19 +67,23 @@ def setup_model(num_labels: int, device: Union[str, torch.device], **config) -> 
                 num_entities=num_nodes,
             ),
         )
-        loss_func = BCEWithLogsNegativeSamplingLoss(config["negative_weight"])
+        label_label_loss_func = BCEWithLogsNegativeSamplingLoss(config["negative_weight"])
     elif model_type == "hard_box":
-        model = HardBox(
+        box_model = HardBox(
             num_labels,
             config["dim"],
             constrain_deltas_fn=config["constrain_deltas_fn"]
         )
-        loss_func = PushApartPullTogetherLoss(config["negative_weight"])
+        label_label_loss_func = PushApartPullTogetherLoss(config["negative_weight"])
     else:
         raise ValueError(f"Model type {config['model_type']} does not exist")
-    model.to(device)
+    box_model.to(device)
 
-    return model, loss_func
+    # TODO we also need to set up the Instance Encoder (F_theta), and the Scorer(instance, label-one-hots, label-embeddings)
+    #  - pass in params in config
+    instance_encoder = InstanceEncoder(input_dim=77, hidden_dim=64)
+
+    return box_model, instance_encoder, label_label_loss_func
 
 
 def setup_training_data(device: Union[str, torch.device], **config) -> InstanceLabelsDataset:
