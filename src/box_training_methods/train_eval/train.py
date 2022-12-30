@@ -52,7 +52,7 @@ def training(config: Dict) -> None:
     random.seed(config["seed"])
 
     # TODO setup imports task-specific setup methods located within each task's train_eval.py
-    model, train_looper = setup(**config)
+    models, train_looper = setup(**config)
     # TODO dataset and dataloader aren't used in this function. Have setup(**config) return just model, train_looper?
 
     if config["wandb"]:
@@ -152,12 +152,19 @@ def setup(**config):
     if config["task"] == "graph_modeling":
         model, loss_func = task_train_eval.setup_model(train_dataset.num_nodes, device, **config)
     elif config["task"] == "multilabel_classification":
-        box_model, loss_func = task_train_eval.setup_model(taxonomy_dataset.num_nodes, device, **config)
+        box_model, instance_encoder, scorer, label_label_loss_func = \
+            task_train_eval.setup_model(taxonomy_dataset.num_nodes, device, **config)
 
     # setup optimizer
-    opt = torch.optim.Adam(
-        model.parameters(), lr=config["learning_rate"], weight_decay=0.0
-    )
+    if config["task"] == "graph_modeling":
+        opt = torch.optim.Adam(
+            model.parameters(), lr=config["learning_rate"], weight_decay=0.0
+        )
+    elif config["task"] == "multilabel_classification":
+        # TODO add more params to optimize
+        opt = torch.optim.Adam(
+            box_model.parameters(), lr=config["learning_rate"], weight_decay=0.0
+        )
 
     # set Eval Looper
     eval_loopers = []
@@ -176,13 +183,13 @@ def setup(**config):
             eval_loopers.extend([
                 MultilabelClassificationEvalLooper(
                     name="Validation",
-                    model=model,
+                    model=box_model,
                     dl=dev_dataloader,
                     batchsize=2 ** config["log_eval_batch_size"],
                 ),
                 MultilabelClassificationEvalLooper(
                     name="Test",
-                    model=model,
+                    model=box_model,
                     dl=test_dataloader,
                     batchsize=2 ** config["log_eval_batch_size"],
                 )
@@ -201,14 +208,21 @@ def setup(**config):
     elif config["task"] == "multilabel_classification":
         train_looper = MultilabelClassificationTrainLooper(
             name="Train",
-            box_model=model,
+            box_model=box_model,
+            instance_model=instance_encoder,
+            scorer=scorer,
             instance_label_dl=train_dataloader,
             label_label_dl=taxonomy_dataloader,
             opt=opt,
-            loss_func=loss_func,
+            label_label_loss_func=label_label_loss_func,
             eval_loopers=eval_loopers,
             log_interval=config["log_interval"],
             early_stopping=EarlyStopping("Loss", config["patience"]),
         )
 
-    return model, train_looper
+    if config["task"] == "graph_modeling":
+        models = (model,)
+    elif config["task"] == "multilabel_classification":
+        models = (box_model, instance_encoder, scorer)
+
+    return models, train_looper
