@@ -20,7 +20,8 @@ from box_training_methods.graph_modeling.loss import (
     MaxMarginOENegativeSamplingLoss,
     PushApartPullTogetherLoss,
 )
-from .mlc_models import InstanceEncoder
+from .instance_encoder import InstanceHardBoxEncoder
+from .instance_scorers.instance_as_box_scorers.hard_box_scorer import HardBoxScorer
 
 
 __all__ = [
@@ -79,14 +80,17 @@ def setup_model(num_labels: int, device: Union[str, torch.device], **config) -> 
         raise ValueError(f"Model type {config['model_type']} does not exist")
     box_model.to(device)
 
-    # TODO we also need to set up the Instance Encoder (F_theta), and the Scorer(instance, label-one-hots, label-embeddings)
-    #  - pass in params in config
-    instance_encoder = InstanceEncoder(input_dim=77, hidden_dim=64)
+    # TODO args from click
+    instance_encoder = InstanceHardBoxEncoder(input_dim=77, hidden_dim=64)
 
-    return box_model, instance_encoder, label_label_loss_func
+    # TODO args from click
+    scorer = HardBoxScorer()
+
+    return box_model, instance_encoder, scorer, label_label_loss_func
 
 
-def setup_training_data(device: Union[str, torch.device], **config) -> InstanceLabelsDataset:
+def setup_training_data(device: Union[str, torch.device], **config) -> \
+        Tuple[GraphDataset, InstanceLabelsDataset, InstanceLabelsDataset, InstanceLabelsDataset]:
     """
     Load the training data
 
@@ -136,6 +140,7 @@ def setup_training_data(device: Union[str, torch.device], **config) -> InstanceL
     dev_dataset = InstanceLabelsDataset(instances=instances_dev, labels=labels_dev, label_set=label_set)
     test_dataset = InstanceLabelsDataset(instances=instances_test, labels=labels_test, label_set=label_set)
 
+    # TODO update these stats
     # logger.info(f"Number of edges in dataset: {dataset.num_edges:,}")
     # logger.info(f"Number of edges to avoid: {len(avoid_edges):,}")
     # logger.info(
