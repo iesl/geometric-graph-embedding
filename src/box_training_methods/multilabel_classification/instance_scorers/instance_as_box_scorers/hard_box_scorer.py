@@ -1,3 +1,4 @@
+import torch
 from torch.nn import Module
 from torch import Tensor
 from box_training_methods.utils import tiny_value_of_dtype
