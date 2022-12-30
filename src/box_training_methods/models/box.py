@@ -218,6 +218,14 @@ class HardBox(Module):
         self.V = Parameter(torch.randn((num_entities, dim)))  # unconstrained parameter for delta
 
         self.constrain_deltas_fn = constrain_deltas_fn  # sqr, exp, softplus, proj
+        if constrain_deltas_fn == "sqr":
+            self.constrain_deltas_fn = lambda deltas: torch.pow(deltas, 2)
+        elif constrain_deltas_fn == "exp":
+            self.constrain_deltas_fn = lambda deltas: torch.exp(deltas)
+        elif constrain_deltas_fn == "softplus":
+            self.constrain_deltas_fn = lambda deltas: F.softplus(deltas, beta=1, threshold=20)
+        elif constrain_deltas_fn == "proj":  # "projected gradient descent" in forward method (just clipping)
+            self.constrain_deltas_fn = lambda deltas: deltas.clamp_min(eps)
 
     def forward(
         self, idxs: LongTensor
@@ -229,15 +237,7 @@ class HardBox(Module):
         # (bsz, K+1 (+/-), 2 (y > x), dim) if train
         # (bsz, 2 (y > x), dim) if inference
         mins = self.U[idxs]
-        deltas = self.V[idxs]  # deltas must be > 0
-        if self.constrain_deltas_fn == "sqr":
-            deltas = torch.pow(deltas, 2)
-        elif self.constrain_deltas_fn == "exp":
-            deltas = torch.exp(deltas)
-        elif self.constrain_deltas_fn == "softplus":
-            deltas = F.softplus(deltas, beta=1, threshold=20)
-        elif self.constrain_deltas_fn == "proj":  # "projected gradient descent" in forward method (just clipping)
-            deltas = deltas.clamp_min(eps)
+        deltas = self.constrain_deltas_fn(self.V[idxs])  # deltas must be > 0
 
         if self.training:
 
@@ -283,3 +283,11 @@ class HardBox(Module):
             containment = torch.le(energy, threshold).int()  # if entry is 0, y > x
 
             return containment
+
+    def box_params_as_mins_maxs(self) -> Tensor:
+
+        mins = torch.unsqueeze(self.U, dim=1)
+        deltas = torch.unsqueeze(self.constrain_deltas_fn(self.V), dim=1)
+        maxs = mins + deltas
+
+        return torch.cat([mins, maxs], dim=1)     # (batch_size, 2, dim)
