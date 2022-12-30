@@ -193,10 +193,11 @@ class MultilabelClassificationTrainLooper:
     name: str
     box_model: Module
     instance_model: Module
+    scorer: Module
     instance_label_dl: DataLoader
     label_label_dl: DataLoader
     opt: torch.optim.Optimizer
-    loss_func: Callable
+    label_label_loss_func: Callable
     scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None
     eval_loopers: Iterable[EvalLooper] = attr.ib(factory=tuple)
     early_stopping: Callable = lambda z: None
@@ -225,7 +226,8 @@ class MultilabelClassificationTrainLooper:
         try:
             self.running_losses = []
             for epoch in trange(epochs, desc=f"[{self.name}] Epochs"):
-                self.model.train()
+                self.box_model.train()
+                self.instance_model.train()
                 with torch.enable_grad():
                     self.train_loop(epoch)
         except StopLoopingException as e:
@@ -233,60 +235,56 @@ class MultilabelClassificationTrainLooper:
         finally:
             self.logger.commit()
 
-            # load in the best model
-            previous_device = next(iter(self.model.parameters())).device
-            self.model.load_state_dict(self.save_model.best_model_state_dict())
-            self.model.to(previous_device)
-
-            # evaluate
-            metrics = []
-            predictions_coo = []
-            for eval_looper in self.eval_loopers:
-                metric, prediction_coo = eval_looper.loop()
-                metrics.append(metric)
-                predictions_coo.append(prediction_coo)
-            return metrics, predictions_coo
+            # TODO adapt this to MLC models
+            # # load in the best model
+            # previous_device = next(iter(self.model.parameters())).device
+            # self.model.load_state_dict(self.save_model.best_model_state_dict())
+            # self.model.to(previous_device)
+            #
+            # # evaluate
+            # metrics = []
+            # predictions_coo = []
+            # for eval_looper in self.eval_loopers:
+            #     metric, prediction_coo = eval_looper.loop()
+            #     metrics.append(metric)
+            #     predictions_coo.append(prediction_coo)
+            # return metrics, predictions_coo
 
     def train_loop(self, epoch: Optional[int] = None):
         """
         Internal loop for a single epoch of training
         :return: list of losses per batch
         """
-        # examples_this_epoch = 0
-        # examples_in_single_epoch = len(self.dl.dataset)
-        # last_time_stamp = time.time()
-        # num_batch_passed = 0
 
-        # TODO this is currently iterating over self.dl
-        #  Needs to also iterate over self.taxonomy_dl (which has GraphDataset under the hood)
-        #  How to correctly set up this procedure?
-        for iteration, batch_in in enumerate(
-            tqdm(self.dl, desc=f"[{self.name}] Batch", leave=False)
+        label_label_iter = iter(self.label_label_dl)
+
+        for iteration, instance_label_batch_in in enumerate(
+            tqdm(self.instance_label_dl, desc=f"[{self.name}] Batch", leave=False)
         ):
+
+            instance_batch_in, label_batch_one_hots = instance_label_batch_in
+
+            try:
+                label_label_batch_in= next(label_label_iter)
+            except StopIteration:
+                label_label_iter = iter(self.label_label_dl)
+                label_label_batch_in = next(label_label_iter)
+
             self.opt.zero_grad()
 
+            # compute L_G
+            label_label_batch_out = self.box_model(label_label_batch_in)
+            label_label_loss = self.label_label_loss_func(label_label_batch_out)
+            label_label_loss = label_label_loss.sum(dim=0)
+
+            # compute instance encoding
+            instance_encodings = self.instance_model(instance_batch_in)
+
+            # compute L_nll
+            labels_boxes = self.box_model.box_params_as_mins_maxs()     # TODO generic API for returning box params
+
+            # TODO scoring: self.scorer(instance_encodings, labels_boxes, label_batch_one_hots)
             breakpoint()
-
-            # TODO encode instances with InstanceEncoder, use one-hot labels to compare with model params:
-            #  1. for (instance, label_one_hots) in dl:
-            #  2.   instance_embs = InstanceEncoder(instance)
-            #  3.   labels_embs = {Hard,T}BoxModel.U, {Hard,T}BoxModel.V     # access box model params directly
-            #  4.   L_nll = scoring_fn(instance_embs, label_embs, label_one_hots)
-            # TODO
-            #  1. for (l_i, l_j) in taxonomy_dl:
-            #  2.   L_G = apply GraphModeling loss as usual
-            batch_out = self.model(batch_in)
-            loss = self.loss_func(batch_out)
-
-            # This is not always going to be the right thing to check.
-            # In a more general setting, we might want to consider wrapping the DataLoader in some way
-            # with something which stores this information.
-            num_in_batch = len(loss)
-
-            loss = loss.sum(dim=0)
-
-            # self.looper_metrics["Total Examples"] += num_in_batch
-            # examples_this_epoch += num_in_batch
 
             if torch.isnan(loss).any():
                 raise StopLoopingException("NaNs in loss")
@@ -298,7 +296,6 @@ class MultilabelClassificationTrainLooper:
                     if torch.isnan(param.grad).any():
                         raise StopLoopingException("NaNs in grad")
 
-            # num_batch_passed += 1
             # TODO: Refactor the following
             self.opt.step()
             # If you have a scheduler, keep track of the learning rate
@@ -313,36 +310,6 @@ class MultilabelClassificationTrainLooper:
                         self.looper_metrics[f"Learning Rate (Group {i})"] = param_group[
                             "lr"
                         ]
-
-            # # Check performance every self.log_interval number of examples
-            # last_log = self.log_interval.last
-
-            # if self.log_interval(self.looper_metrics["Total Examples"]):
-            #     current_time_stamp = time.time()
-            #     time_spend = (current_time_stamp - last_time_stamp) / num_batch_passed
-            #     last_time_stamp = current_time_stamp
-            #     num_batch_passed = 0
-            #     self.logger.collect({"avg_time_per_batch": time_spend})
-            #
-            #     self.logger.collect(self.looper_metrics)
-            #     mean_loss = sum(self.running_losses) / (
-            #         self.looper_metrics["Total Examples"] - last_log
-            #     )
-            #     metrics = {"Mean Loss": mean_loss}
-            #     self.logger.collect(
-            #         {
-            #             **{
-            #                 f"[{self.name}] {metric_name}": value
-            #                 for metric_name, value in metrics.items()
-            #             },
-            #             "Epoch": epoch + examples_this_epoch / examples_in_single_epoch,
-            #         }
-            #     )
-            #     self.logger.commit()
-            #     self.running_losses = []
-            #     self.update_best_metrics_(metrics)
-            #     self.save_if_best_(self.best_metrics["Mean Loss"])
-            #     self.early_stopping(self.best_metrics["Mean Loss"])
 
     def update_best_metrics_(self, metrics: Dict[str, float]) -> None:
         for name, comparison in self.best_metrics_comparison_functions.items():
