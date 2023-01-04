@@ -55,7 +55,7 @@ from .loss import (
     MaxMarginOENegativeSamplingLoss,
     PushApartPullTogetherLoss,
 )
-from box_training_methods.models.box import BoxMinDeltaSoftplus, TBox, HardBox
+from box_training_methods.models.box import BoxMinDeltaSoftplus, TBox
 from box_training_methods.models.hyperbolic import (
     Lorentzian,
     LorentzianDistance,
@@ -115,10 +115,10 @@ def setup_model(
         )
         loss_func = BCEWithLogsNegativeSamplingLoss(config["negative_weight"])
     elif model_type == "hard_box":
-        model = HardBox(
+        model = TBox(
             num_nodes,
             config["dim"],
-            constrain_deltas_fn=config["constrain_deltas_fn"]
+            hard_box=True
         )
         loss_func = PushApartPullTogetherLoss(config["negative_weight"])
     elif model_type == "order_embeddings":

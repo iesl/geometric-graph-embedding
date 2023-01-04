@@ -14,7 +14,6 @@ from box_training_methods import metric_logger
 __all__ = [
     "BoxMinDeltaSoftplus",
     "TBox",
-    "HardBox",
 ]
 
 
@@ -133,6 +132,7 @@ class TBox(Module):
         dim: int,
         intersection_temp: Union[Module, float] = 0.01,
         volume_temp: Union[Module, float] = 1.0,
+        hard_box: bool = False,
     ):
         super().__init__()
         self.boxes = Parameter(
@@ -141,6 +141,7 @@ class TBox(Module):
         )
         self.intersection_temp = convert_float_to_const_temp(intersection_temp)
         self.volume_temp = convert_float_to_const_temp(volume_temp)
+        self.hard_box = hard_box
 
     def forward(
         self, idxs: LongTensor
@@ -151,6 +152,10 @@ class TBox(Module):
         :returns: FloatTensor representing the energy of the edges in `idxs`
         """
         boxes = self.boxes[idxs]  # shape (..., 2, 2 (min/-max), dim)
+
+        if self.hard_box and self.training:
+            return boxes
+
         intersection_temp = self.intersection_temp(idxs).mean(dim=-3, keepdim=True)
         volume_temp = self.volume_temp(idxs).mean(dim=-3, keepdim=False)
 
@@ -199,95 +204,95 @@ class TBox(Module):
         return out
 
 
-class HardBox(Module):
-    """
-    https://arxiv.org/pdf/1805.04690.pdf
-
-    To be used with non-measure-theoretic loss functions such as push-pull loss
-    """
-
-    def __init__(
-        self,
-        num_entities: int,
-        dim: int,
-        constrain_deltas_fn: str
-    ):
-        super().__init__()
-
-        self.U = Parameter(torch.randn((num_entities, dim)))  # parameter for min
-        self.V = Parameter(torch.randn((num_entities, dim)))  # unconstrained parameter for delta
-
-        self.constrain_deltas_fn = constrain_deltas_fn  # sqr, exp, softplus, proj
-        if constrain_deltas_fn == "sqr":
-            self.constrain_deltas_fn = lambda deltas: torch.pow(deltas, 2)
-        elif constrain_deltas_fn == "exp":
-            self.constrain_deltas_fn = lambda deltas: torch.exp(deltas)
-        elif constrain_deltas_fn == "softplus":
-            self.constrain_deltas_fn = lambda deltas: F.softplus(deltas, beta=1, threshold=20)
-        elif constrain_deltas_fn == "proj":  # "projected gradient descent" in forward method (just clipping)
-            self.constrain_deltas_fn = lambda deltas: deltas.clamp_min(eps)
-
-    def forward(
-        self, idxs: LongTensor
-    ) -> Union[Tuple[Tensor, Dict[str, Tensor]], Tensor]:
-        """
-        :param idxs: Tensor of shape (..., 2) indicating edges, i.e. [...,0] -> [..., 1] is an edge
-        """
-
-        # (bsz, K+1 (+/-), 2 (y > x), dim) if train
-        # (bsz, 2 (y > x), dim) if inference
-        mins = self.U[idxs]
-        deltas = self.constrain_deltas_fn(self.V[idxs])  # deltas must be > 0
-
-        if self.training:
-
-            # produce box embeddings to be used in push-pull loss
-            return torch.stack([mins, deltas], dim=-2)
-
-        else:  # self.eval
-
-            yu, yv, xu, xv = mins[..., [0], :], deltas[..., [0], :], mins[..., [1], :], deltas[..., [1], :]  # (bsz, 1, dim)
-            yz, yZ, xz, xZ = yu, yu + yv, xu, xu + xv  # (bsz, 1, dim)
-
-            # compute hard intersection
-            z = torch.max(torch.cat([yz, xz], dim=-2), dim=-2)[0]  # (bsz, 1, dim)
-            Z = torch.min(torch.cat([yZ, xZ], dim=-2), dim=-2)[0]  # (bsz, 1, dim)
-
-            # log(Π(d)) -> Σ(log(d))
-            # do clamp_min over relu (non-negative box dimensions) so that log doesn't go to -inf
-            y_intersection_x_log_vol = torch.squeeze(
-                torch.sum(
-                    torch.log(
-                        F.relu(Z-z).clamp_min(eps)
-                    ),
-                    dim=-1, keepdim=True
-                )
-            )
-            """
-            one-line for debugging:
-            torch.squeeze(torch.sum(torch.log(F.relu(Z-z).clamp_min(eps)), dim=-1, keepdim=True))
-            """
-
-            x_log_vol = torch.squeeze(
-                torch.sum(
-                    torch.log(
-                        F.relu(xZ - xz).clamp_min(eps)
-                    ),
-                    dim=-1, keepdim=True
-                )
-            )
-
-            # energy := -log(P(y|x)) = -log(V(y&x)/V(x)) = logV(x) - logV(y&x)
-            energy = x_log_vol - y_intersection_x_log_vol  # should be 0 if y contains x
-            threshold = 0.1
-            containment = torch.le(energy, threshold).int()  # if entry is 0, y > x
-
-            return containment
-
-    def box_params_as_mins_maxs(self) -> Tensor:
-
-        mins = torch.unsqueeze(self.U, dim=1)
-        deltas = torch.unsqueeze(self.constrain_deltas_fn(self.V), dim=1)
-        maxs = mins + deltas
-
-        return torch.cat([mins, maxs], dim=1)     # (batch_size, 2, dim)
+# class HardBox(Module):
+#     """
+#     https://arxiv.org/pdf/1805.04690.pdf
+#
+#     To be used with non-measure-theoretic loss functions such as push-pull loss
+#     """
+#
+#     def __init__(
+#         self,
+#         num_entities: int,
+#         dim: int,
+#         constrain_deltas_fn: str
+#     ):
+#         super().__init__()
+#
+#         self.U = Parameter(torch.randn((num_entities, dim)))  # parameter for min
+#         self.V = Parameter(torch.randn((num_entities, dim)))  # unconstrained parameter for delta
+#
+#         self.constrain_deltas_fn = constrain_deltas_fn  # sqr, exp, softplus, proj
+#         if constrain_deltas_fn == "sqr":
+#             self.constrain_deltas_fn = lambda deltas: torch.pow(deltas, 2)
+#         elif constrain_deltas_fn == "exp":
+#             self.constrain_deltas_fn = lambda deltas: torch.exp(deltas)
+#         elif constrain_deltas_fn == "softplus":
+#             self.constrain_deltas_fn = lambda deltas: F.softplus(deltas, beta=1, threshold=20)
+#         elif constrain_deltas_fn == "proj":  # "projected gradient descent" in forward method (just clipping)
+#             self.constrain_deltas_fn = lambda deltas: deltas.clamp_min(eps)
+#
+#     def forward(
+#         self, idxs: LongTensor
+#     ) -> Union[Tuple[Tensor, Dict[str, Tensor]], Tensor]:
+#         """
+#         :param idxs: Tensor of shape (..., 2) indicating edges, i.e. [...,0] -> [..., 1] is an edge
+#         """
+#
+#         # (bsz, K+1 (+/-), 2 (y > x), dim) if train
+#         # (bsz, 2 (y > x), dim) if inference
+#         mins = self.U[idxs]
+#         deltas = self.constrain_deltas_fn(self.V[idxs])  # deltas must be > 0
+#
+#         if self.training:
+#
+#             # produce box embeddings to be used in push-pull loss
+#             return torch.stack([mins, deltas], dim=-2)
+#
+#         else:  # self.eval
+#
+#             yu, yv, xu, xv = mins[..., [0], :], deltas[..., [0], :], mins[..., [1], :], deltas[..., [1], :]  # (bsz, 1, dim)
+#             yz, yZ, xz, xZ = yu, yu + yv, xu, xu + xv  # (bsz, 1, dim)
+#
+#             # compute hard intersection
+#             z = torch.max(torch.cat([yz, xz], dim=-2), dim=-2)[0]  # (bsz, 1, dim)
+#             Z = torch.min(torch.cat([yZ, xZ], dim=-2), dim=-2)[0]  # (bsz, 1, dim)
+#
+#             # log(Π(d)) -> Σ(log(d))
+#             # do clamp_min over relu (non-negative box dimensions) so that log doesn't go to -inf
+#             y_intersection_x_log_vol = torch.squeeze(
+#                 torch.sum(
+#                     torch.log(
+#                         F.relu(Z-z).clamp_min(eps)
+#                     ),
+#                     dim=-1, keepdim=True
+#                 )
+#             )
+#             """
+#             one-line for debugging:
+#             torch.squeeze(torch.sum(torch.log(F.relu(Z-z).clamp_min(eps)), dim=-1, keepdim=True))
+#             """
+#
+#             x_log_vol = torch.squeeze(
+#                 torch.sum(
+#                     torch.log(
+#                         F.relu(xZ - xz).clamp_min(eps)
+#                     ),
+#                     dim=-1, keepdim=True
+#                 )
+#             )
+#
+#             # energy := -log(P(y|x)) = -log(V(y&x)/V(x)) = logV(x) - logV(y&x)
+#             energy = x_log_vol - y_intersection_x_log_vol  # should be 0 if y contains x
+#             threshold = 0.1
+#             containment = torch.le(energy, threshold).int()  # if entry is 0, y > x
+#
+#             return containment
+#
+#     def box_params_as_mins_maxs(self) -> Tensor:
+#
+#         mins = torch.unsqueeze(self.U, dim=1)
+#         deltas = torch.unsqueeze(self.constrain_deltas_fn(self.V), dim=1)
+#         maxs = mins + deltas
+#
+#         return torch.cat([mins, maxs], dim=1)     # (batch_size, 2, dim)

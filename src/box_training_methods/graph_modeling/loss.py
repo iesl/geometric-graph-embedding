@@ -202,84 +202,49 @@ class PushApartPullTogetherLoss(Module):
         self.stiffness = torch.nn.Parameter(torch.tensor(5.))           # ψ
         self.nonlinearity = F.sigmoid                                   # σ
 
-    def forward(self, inputs: Tensor, reduce=None, *args, **kwargs) -> Tensor:
+    def forward(self, inputs: Tensor, *args, **kwargs) -> Tensor:
         """
-        :param inputs: Tensor of shape (bsz, 1+K, 2 (y > x or y !> x), 2 (u/v), dim) representing hard
-                      box embedding of two graph vertices, where [...,0,...] is the score for
-                      positive examples and [..., 1:] are scores for negatives.
-        :param reduce:
+        :param inputs: Tensor of shape (bsz, 1+K, 2 (y > x or y !> x), 2 (z/-Z), dim) representing hard
+                      box embedding of two graph vertices, where [:, 0, ...] are the embeddings for the
+                      positive example and [:, 1:, ...] are embeddings for negatives.
         """
 
-        pos_inputs = inputs[..., [0], :, :, :]    # (bsz, 1 (+), 2 (y > x), 2 (u/v), dim)
-        x_pos = pos_inputs[..., [1], :, :]        # (bsz, 1 (+), 1 (x), 2 (u/v), dim)
-        y_pos = pos_inputs[..., [0], :, :]        # (bsz, 1 (+), 1 (y), 2 (u/v), dim)
-        u_x_pos = x_pos[..., [0], :]              # (bsz, 1 (+), 1 (x), 1 (u), dim)
-        v_x_pos = x_pos[..., [1], :]              # (bsz, 1 (+), 1 (x), 1 (v), dim)
-        u_y_pos = y_pos[..., [0], :]              # (bsz, 1 (+), 1 (y), 1 (u), dim)
-        v_y_pos = y_pos[..., [1], :]              # (bsz, 1 (+), 1 (y), 1 (v), dim)
+        # convert min/-max representation into u/v (i.e. min/delta) representation
+        # inputs: (bsz, 1+K, 2 (y > x or y !> x), 2 (u/v), dim)
+        inputs = torch.cat([inputs[..., [0], :], -inputs.sum(dim=-2, keepdim=True)], dim=-2)
+
+        u_x_pos = inputs[:, [0], [1], [0], :]
+        v_x_pos = inputs[:, [0], [1], [1], :]
+        u_y_pos = inputs[:, [0], [0], [0], :]
+        v_y_pos = inputs[:, [0], [0], [1], :]
 
         # positive examples x < y: "pull together loss"
-        if reduce == "sum":
-            loss_pos = torch.squeeze(
-                torch.sum(torch.cat([F.relu(u_y_pos - u_x_pos),
-                                     F.relu(u_x_pos + v_x_pos - u_y_pos - v_y_pos)], dim=-2),  # concat along min/max axis
-                          dim=(-1, -2), keepdim=True))  # sum along min/max and dim axes
-            """
-            one-line for debugging:
-            torch.squeeze(torch.sum(torch.cat([F.relu(u_y_pos - u_x_pos), F.relu(u_x_pos + v_x_pos - u_y_pos - v_y_pos)], dim=-2), dim=(-1, -2), keepdim=True))
-            """
-        else:
-            loss_pos = self.nonlinearity(
-                self.stiffness * torch.squeeze(
-                    torch.max(
-                        torch.max(
-                            torch.cat([F.relu(u_y_pos + self.margin - u_x_pos),
-                                       F.relu(u_x_pos + v_x_pos + self.margin - u_y_pos - v_y_pos)], dim=-2),  # concat along min/max axis
-                            dim=-2, keepdim=True)[0],  # max along min/max axis
-                        dim=-1, keepdim=True)[0]  # max along dim axis
-                )
-            )
-            """
-            one-line for debugging:
-            torch.squeeze(torch.max(torch.max(torch.cat([F.relu(u_y_pos - u_x_pos),F.relu(u_x_pos + v_x_pos - u_y_pos - v_y_pos)], dim=-2), dim=-2, keepdim=True)[0], dim=-1, keepdim=True)[0])
-            """
+        loss_pos = \
+            torch.max(
+                torch.max(
+                    torch.cat([F.relu(u_y_pos + self.margin - u_x_pos),
+                               F.relu(u_x_pos + v_x_pos + self.margin - u_y_pos - v_y_pos)], dim=-2),
+                    dim=-2, keepdim=True).values,
+                dim=-1, keepdim=True).values
+        loss_pos = torch.squeeze(self.nonlinearity(self.stiffness * loss_pos))
 
-        neg_inputs = inputs[..., 1:, :, :, :]       # (bsz, K (-), 2 (y !> x), 2 (u/v), dim)
-        x_neg = neg_inputs[..., [1], :, :]          # (bsz, K (-), 1 (x), 2 (u/v), dim)
-        y_neg = neg_inputs[..., [0], :, :]          # (bsz, K (-), 1 (y), 2 (u/v), dim)
-        u_x_neg = x_neg[..., [0], :]                # (bsz, K (-), 1 (x), 1 (u), dim)
-        v_x_neg = x_neg[..., [1], :]                # (bsz, K (-), 1 (x), 1 (v), dim)
-        u_y_neg = y_neg[..., [0], :]                # (bsz, K (-), 1 (y), 1 (u), dim)
-        v_y_neg = y_neg[..., [1], :]                # (bsz, K (-), 1 (y), 1 (v), dim)
+        u_x_neg = inputs[:, 1:, [1], [0], :]
+        v_x_neg = inputs[:, 1:, [1], [1], :]
+        u_y_neg = inputs[:, 1:, [0], [0], :]
+        v_y_neg = inputs[:, 1:, [0], [1], :]
 
         # negative examples x !< y: "push apart loss"
         # We incur penalty for only the smallest violation because even the minimal non-containment is
         #   good enough to say that "x is not a child of y" (for a negative example).
-        if reduce == "sum":
-            loss_neg = torch.squeeze(torch.sum(torch.cat([F.relu(u_x_neg - u_y_neg),
-                                                          F.relu(u_y_neg + v_y_neg - u_x_neg - v_x_neg)], dim=-2),
-                                               dim=(-1, -2, -4), keepdim=True))
-            """
-            one-line for debugging:
-            torch.squeeze(torch.sum(torch.cat([F.relu(u_x_neg - u_y_neg), F.relu(u_y_neg + v_y_neg - u_x_neg - v_x_neg)], dim=-2), dim=(-1, -2, -4), keepdim=True)) 
-            """
-        else:
-            loss_neg = torch.squeeze(
-                torch.sum(
-                    self.nonlinearity(
-                        self.stiffness * torch.min(
-                            torch.min(
-                                torch.cat([F.relu(u_x_neg + self.margin - u_y_neg),
-                                           F.relu(u_y_neg + v_y_neg + self.margin - u_x_neg - v_x_neg)], dim=-2),  # concat along min/max axis
-                            dim=-2, keepdim=True)[0],  # min along min/max axis
-                        dim=-1, keepdim=True)[0]    # min along dim axis
-                    ),
-                dim=-4, keepdim=True)  # sum over K negative examples
-            )
-            """
-            one-line for debugging:
-            torch.sum(torch.squeeze(torch.min(torch.min(torch.cat([F.relu(u_x_neg - u_y_neg), F.relu(u_y_neg + v_y_neg - u_x_neg - v_x_neg)], dim=-2), dim=-2, keepdim=True)[0], dim=-1, keepdim=True)[0]), dim=-1)
-            """
+        loss_neg = \
+            torch.min(
+                torch.min(
+                    torch.cat([F.relu(u_x_neg + self.margin - u_y_neg),
+                               F.relu(u_y_neg + v_y_neg + self.margin - u_x_neg - v_x_neg)], dim=-2),
+                    dim=-2, keepdim=True).values,
+                dim=-1, keepdim=True).values
+        loss_neg = torch.squeeze(self.nonlinearity(self.stiffness * loss_neg))
+        loss_neg = loss_neg.sum(dim=-1)
 
         loss = loss_pos + self.negative_weight * loss_neg
         return loss
