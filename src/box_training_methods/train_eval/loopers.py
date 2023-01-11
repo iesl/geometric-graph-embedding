@@ -265,10 +265,13 @@ class MultilabelClassificationTrainLooper:
             instance_batch_in, label_batch_one_hots = instance_label_batch_in
 
             try:
-                label_label_batch_in= next(label_label_iter)
+                label_label_batch_in = next(label_label_iter)
             except StopIteration:
                 label_label_iter = iter(self.label_label_dl)
                 label_label_batch_in = next(label_label_iter)
+
+            # TODO for each (instance_i, label_i), get more label-label info about label_i
+            #  modified GraphDataloader(label_i) -> more edges about label_i
 
             self.opt.zero_grad()
 
@@ -281,8 +284,7 @@ class MultilabelClassificationTrainLooper:
             instance_encodings = self.instance_model(instance_batch_in)
 
             # compute L_nll
-            labels_boxes = self.box_model.box_params_as_mins_maxs()     # TODO generic API for returning box params
-
+            # TODO generic API for returning box params
             # TODO scoring: self.scorer(instance_encodings, labels_boxes, label_batch_one_hots)
             breakpoint()
 

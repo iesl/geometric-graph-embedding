@@ -46,6 +46,8 @@ class InstanceHardBoxEncoder(Module):
         elif self.constrain_deltas_fn == "proj":  # "projected gradient descent" in forward method (just clipping)
             delta = delta.clamp_min(eps)
 
+        # TODO temperature — when temp = 0, degrades to HardBox, otherwise TBox
+
         max = min + delta
         instance_encoding = torch.hstack([min, max])    # (batch_size, 2)
 

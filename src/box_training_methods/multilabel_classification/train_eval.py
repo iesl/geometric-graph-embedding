@@ -12,7 +12,7 @@ from pytorch_utils import TensorDataLoader, cuda_if_available
 from .dataset import edges_from_hierarchy_edge_list, ARFFReader, InstanceLabelsDataset
 from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, GraphDataset
 
-from box_training_methods.models.box import BoxMinDeltaSoftplus, TBox, HardBox
+from box_training_methods.models.box import BoxMinDeltaSoftplus, TBox
 from box_training_methods.graph_modeling.loss import (
     BCEWithLogsNegativeSamplingLoss,
     BCEWithLogitsNegativeSamplingLoss,
@@ -58,22 +58,22 @@ def setup_model(num_labels: int, device: Union[str, torch.device], **config) -> 
                 0.0001,
                 100,
                 dim=config["dim"],
-                num_entities=num_nodes,
+                num_entities=num_labels,
             ),
             volume_temp=Temp(
                 config["box_volume_temp"],
                 0.01,
                 1000,
                 dim=config["dim"],
-                num_entities=num_nodes,
+                num_entities=num_labels,
             ),
         )
         label_label_loss_func = BCEWithLogsNegativeSamplingLoss(config["negative_weight"])
     elif model_type == "hard_box":
-        box_model = HardBox(
+        box_model = TBox(
             num_labels,
             config["dim"],
-            constrain_deltas_fn=config["constrain_deltas_fn"]
+            hard_box=True
         )
         label_label_loss_func = PushApartPullTogetherLoss(config["negative_weight"])
     else:

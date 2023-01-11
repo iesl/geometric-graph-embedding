@@ -34,6 +34,7 @@ class HardBoxScorer(Module):
         y_pos_z, y_pos_Z = positive_labels_boxes[..., 0], positive_labels_boxes[..., 1]     # (..., num_pos, 1)
         y_neg_z, y_neg_Z = negative_labels_boxes[..., 0], negative_labels_boxes[..., 1]     # (..., num_neg, 1)
 
+        # TODO!!!
         pos_z = None
         pos_Z = None
         neg_z = None
