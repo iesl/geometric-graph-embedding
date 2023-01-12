@@ -204,7 +204,7 @@ class PushApartPullTogetherLoss(Module):
 
     def forward(self, inputs: Tensor, *args, **kwargs) -> Tensor:
         """
-        :param inputs: Tensor of shape (bsz, 1+K, 2 (y > x or y !> x), 2 (z/-Z), dim) representing hard
+        :param inputs: Tensor of shape (bsz, 1+K, 2 (x < y or x !< y), 2 (z/-Z), dim) representing hard
                       box embedding of two graph vertices, where [:, 0, ...] are the embeddings for the
                       positive example and [:, 1:, ...] are embeddings for negatives.
         """
@@ -213,10 +213,10 @@ class PushApartPullTogetherLoss(Module):
         # inputs: (bsz, 1+K, 2 (y > x or y !> x), 2 (u/v), dim)
         inputs = torch.cat([inputs[..., [0], :], -inputs.sum(dim=-2, keepdim=True)], dim=-2)
 
-        u_x_pos = inputs[:, [0], [1], [0], :]
-        v_x_pos = inputs[:, [0], [1], [1], :]
-        u_y_pos = inputs[:, [0], [0], [0], :]
-        v_y_pos = inputs[:, [0], [0], [1], :]
+        u_x_pos = inputs[:, [0], [0], [0], :]
+        v_x_pos = inputs[:, [0], [0], [1], :]
+        u_y_pos = inputs[:, [0], [1], [0], :]
+        v_y_pos = inputs[:, [0], [1], [1], :]
 
         # positive examples x < y: "pull together loss"
         loss_pos = \
@@ -228,10 +228,10 @@ class PushApartPullTogetherLoss(Module):
                 dim=-1, keepdim=True).values
         loss_pos = torch.squeeze(self.nonlinearity(self.stiffness * loss_pos))
 
-        u_x_neg = inputs[:, 1:, [1], [0], :]
-        v_x_neg = inputs[:, 1:, [1], [1], :]
-        u_y_neg = inputs[:, 1:, [0], [0], :]
-        v_y_neg = inputs[:, 1:, [0], [1], :]
+        u_x_neg = inputs[:, 1:, [0], [0], :]
+        v_x_neg = inputs[:, 1:, [0], [1], :]
+        u_y_neg = inputs[:, 1:, [1], [0], :]
+        v_y_neg = inputs[:, 1:, [1], [1], :]
 
         # negative examples x !< y: "push apart loss"
         # We incur penalty for only the smallest violation because even the minimal non-containment is
