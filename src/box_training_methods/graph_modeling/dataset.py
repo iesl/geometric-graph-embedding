@@ -12,6 +12,8 @@ from scipy.sparse import load_npz
 from torch import Tensor, LongTensor
 from torch.utils.data import Dataset
 
+import networkx as nx
+
 from ..enums import PermutationOption
 
 __all__ = [
@@ -24,6 +26,7 @@ __all__ = [
     "convert_ints_to_edges",
     "RandomEdges",
     "RandomNegativeEdges",
+    "HierarchicalNegativeEdges",
     "GraphDataset",
 ]
 
@@ -384,6 +387,59 @@ class RandomNegativeEdges:
         self._buckets.to(device)
         self._breakpoints.to(device)
         return self
+
+@attr.s(auto_attribs=True)
+class HierarchicalNegativeEdges:
+
+    edges: Tensor = attr.ib(validator=_validate_edge_tensor)
+
+    def __attrs_post_init__(self):
+        self.nx_graph = nx.DiGraph()
+        self.nx_graph.add_edges_from(self.edges[:, [1, 0]].tolist())
+        self.root_nodes = [node for node,degree in self.nx_graph.in_degree if degree == 0]
+        self.root = self.root_nodes[0]  # TODO make this simplifying assumption just for now
+        self.adjacency_matrix = nx.adjacency_matrix(self.nx_graph, nodelist=sorted(list(self.nx_graph.nodes)))
+
+    def __call__(self, positive_edges: Optional[LongTensor]) -> LongTensor:
+
+        negative_roots = self._recurse_uncles_upwards_until_root(nodes=positive_edges[:, 1], uncles=[])
+        breakpoint()
+
+    def _recurse_uncles_upwards_until_root(self, nodes, uncles=[]):
+
+        # TODO if all nodes are root, return uncles
+        #   - handle the case with multiple root nodes efficiently
+        #   - handle -1 padding here
+        if nodes.eq(self.root).all():
+            return uncles
+
+        """
+        fetch columns for each of the nodes:
+           - any index in column with value 1 -> index is parent
+        fetch rows for each of the nodes
+           - any index in row with value 0 -> index is uncle
+        """
+
+        """"
+        since a given node may have more than one parent in a DAG, different nodes
+        might end up with a different number of "parents". The "parent_columns" tell
+        us whose parent each of the returned parents is. Use this info to bucket and
+        pad the parents according to whose parents they are.
+        """
+        # TODO is there a dataset for debugging this that is a DAG and not a tree (i.e. multiple parents)?
+        parents, parent_columns = self.adjacency_matrix[:, nodes].nonzero()
+        # TODO bucket "parents" according to "parent_columns" and pad with -1's.
+        #  This will result in extra dim at the end of parents: (batch_size, max_num_parents)
+
+        uncles, uncles_columns = self.adjacency_matrix[nodes, :].nonzero()
+        # TODO bucket "uncle_columns" according to "uncles"
+
+        breakpoint()
+
+        # TODO
+        uncles = None
+
+        return self._recurse_uncles_upwards_until_root(fathers, uncles)
 
 
 @attr.s(auto_attribs=True)

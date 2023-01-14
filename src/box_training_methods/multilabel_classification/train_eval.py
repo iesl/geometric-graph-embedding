@@ -10,7 +10,7 @@ from torch.nn import Module
 from pytorch_utils import TensorDataLoader, cuda_if_available
 
 from .dataset import edges_from_hierarchy_edge_list, ARFFReader, InstanceLabelsDataset
-from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, GraphDataset
+from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, HierarchicalNegativeEdges, GraphDataset
 
 from box_training_methods.models.box import BoxMinDeltaSoftplus, TBox
 from box_training_methods.graph_modeling.loss import (
@@ -106,19 +106,22 @@ def setup_training_data(device: Union[str, torch.device], **config) -> \
     hierarchy_edge_list_file = data_dir / "hierarchy.edgelist"
 
     # 1. read label taxonomy into GraphDataset
-    taxnonomy_edges, taxonomy_label_encoder = edges_from_hierarchy_edge_list(edge_file=hierarchy_edge_list_file)
+    taxonomy_edges, taxonomy_label_encoder = edges_from_hierarchy_edge_list(edge_file=hierarchy_edge_list_file)
     label_set = taxonomy_label_encoder.classes_
     num_labels = len(label_set)
-    negative_sampler = RandomNegativeEdges(
-        num_nodes=num_labels,
-        negative_ratio=config["negative_ratio"],
-        avoid_edges=None,  # TODO understand the functionality in @mboratko's code
-        device=device,
-        permutation_option=config["negatives_permutation_option"],
+    # negative_sampler = RandomNegativeEdges(
+    #     num_nodes=num_labels,
+    #     negative_ratio=config["negative_ratio"],
+    #     avoid_edges=None,  # TODO understand the functionality in @mboratko's code
+    #     device=device,
+    #     permutation_option=config["negatives_permutation_option"],
+    # )
+    negative_sampler = HierarchicalNegativeEdges(
+        edges=taxonomy_edges
     )
 
     taxonomy_dataset = GraphDataset(
-        taxnonomy_edges, num_nodes=num_labels, negative_sampler=negative_sampler
+        taxonomy_edges, num_nodes=num_labels, negative_sampler=negative_sampler
     )
 
     # 2. read instance-labels into InstanceLabelsDataset
