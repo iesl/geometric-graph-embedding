@@ -84,8 +84,10 @@ def training(config: Dict) -> None:
         config["seed"] = random.randint(0, 2 ** 32)
     torch.manual_seed(config["seed"])
     random.seed(config["seed"])
+
     graph = Path(config["data_path"])
     if graph.is_dir():
+        # If graph is set to a directory, we select a graph from that directory uniformly randomly
         graphs = list({file.stem for file in graph.glob("*.npz")})
         logger.info(f"Directory {graph} has {len(graphs)} graph files")
         selected_graph_name = random.choice(graphs)
@@ -107,6 +109,7 @@ def training(config: Dict) -> None:
         run_dir = Path(".")
 
     dataset, dataloader, model, train_looper = setup(**config)
+    train_looper.save_model.run_dir = run_dir
 
     if config["wandb"]:
         metric_logger.metric_logger = WandBLogger()
@@ -118,11 +121,6 @@ def training(config: Dict) -> None:
     train_looper.logger = metric_logger.metric_logger
     for eval_looper in train_looper.eval_loopers:
         eval_looper.logger = train_looper.logger
-
-    model_checkpoint = ModelCheckpoint(run_dir)
-    if isinstance(train_looper, TrainLooper):
-        logger.debug("Will save best model in RAM (but not on disk) for evaluation")
-        train_looper.save_model = model_checkpoint
 
     metrics, predictions_coo = train_looper.loop(config["epochs"])
 
@@ -145,7 +143,7 @@ def training(config: Dict) -> None:
         f.write(json.dumps(metrics))
 
     if config["save_model"]:
-        model_checkpoint.save_to_disk(None)
+        train_looper.save_model.save_to_disk(None)
 
     if config["save_prediction"]:
         if len(predictions_coo) > 0 and predictions_coo[0] is not None:

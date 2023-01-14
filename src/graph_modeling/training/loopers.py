@@ -30,7 +30,7 @@ from tqdm.autonotebook import trange, tqdm
 
 from pytorch_utils.exceptions import StopLoopingException
 from pytorch_utils.loggers import Logger
-from pytorch_utils.training import IntervalConditional
+from pytorch_utils.training import IntervalConditional, ModelCheckpoint
 from .metrics import *
 
 __all__ = [
@@ -50,8 +50,7 @@ class TrainLooper:
     eval_loopers: Iterable[EvalLooper] = attr.ib(factory=tuple)
     early_stopping: Callable = lambda z: None
     logger: Logger = attr.ib(factory=Logger)
-    summary_func: Callable[Dict] = lambda z: None
-    save_model: Callable[Module] = lambda z: None
+    summary_func: Callable[[Dict], Any] = lambda z: None
     log_interval: Optional[Union[IntervalConditional, int]] = attr.ib(
         default=None, converter=IntervalConditional.interval_conditional_converter
     )
@@ -64,6 +63,7 @@ class TrainLooper:
             # by default, log every batch
             self.log_interval = IntervalConditional(0)
         self.running_losses = []
+        self.save_model = ModelCheckpoint()
 
         self.best_metrics_comparison_functions = {"Mean Loss": min}
         self.best_metrics = {}
@@ -206,7 +206,7 @@ class EvalLooper:
     dl: DataLoader
     batchsize: int
     logger: Logger = attr.ib(factory=Logger)
-    summary_func: Callable[Dict] = lambda z: None
+    summary_func: Callable[[Dict], Any] = lambda z: None
 
     @torch.no_grad()
     def loop(self) -> Dict[str, Any]:
