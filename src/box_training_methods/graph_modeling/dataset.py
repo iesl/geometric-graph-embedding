@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import torch
 from loguru import logger
-from scipy.sparse import load_npz
+from scipy.sparse import load_npz, csr_matrix
 from torch import Tensor, LongTensor
 from torch.utils.data import Dataset
 
@@ -410,7 +410,12 @@ class HierarchicalNegativeEdges:
         # hack for ignoring PAD value during recursive base case check
         self.root_nodes = torch.cat([self.root_nodes, torch.tensor([self.PAD])])
 
-        self.adjacency_matrix = nx.adjacency_matrix(self.nx_graph, nodelist=sorted(list(self.nx_graph.nodes)))
+        self.A = nx.adjacency_matrix(self.nx_graph, nodelist=sorted(list(self.nx_graph.nodes)))
+
+        # add dummy row of zeros and column of zeros to end of matrix, so that -1 padding will index the zeros
+        self.A = np.vstack([self.A.todense(), np.zeros((self.A.shape[0],))])
+        self.A = np.hstack([self.A, np.zeros((self.A.shape[0], 1))])
+        self.A = csr_matrix(self.A)
 
     def __call__(self, positive_edges: Optional[LongTensor]) -> LongTensor:
 
@@ -423,12 +428,12 @@ class HierarchicalNegativeEdges:
         """
 
         Args:
-            nodes: (batch_size, max_parents), where second dimension corresponds to all parents for the starting node at
+            nodes: (batch_size, max_length), where second dimension corresponds to all parents for the starting node at
                     this level of recursion. Since different starting nodes in a DAG may have different number of parents
                     at a given level of recursion, we pad this dimension with -1 for every starting node dimension with
-                    less than max_parents at the current level of recursion.
+                    less than max_length at the current level of recursion.
             uncles: dictionary mapping from each level of recursion (going up towards root) to tensor of
-                     (batch_size, max_uncles) storing all the roots for negative samples at each level.
+                     (batch_size, max_length) storing all the roots for negative samples at each level.
             level: parent of positive example is level 0, subtract 1 for each higher level.
 
         Returns: uncles
@@ -445,11 +450,36 @@ class HierarchicalNegativeEdges:
         compareview = self.root_nodes.repeat(*nodes.shape, 1)
         roots_only = (compareview == nodes.unsqueeze(-1)).sum(-1).all()
         if roots_only:
-            breakpoint()
             return uncles
 
-        # TODO is there a dataset for debugging this that is a DAG and not a tree (i.e. multiple parents)?
-        parents, buckets, _ = self.adjacency_matrix.todense()[:, nodes].nonzero()
+        # to get uncles, we must get all children of the grandparents, and subtract the parents
+        parents = self._batch_get_parents_or_children(nodes, action="parents")
+        grandparents = self._batch_get_parents_or_children(parents, action="parents")
+        children_of_grandparents = self._batch_get_parents_or_children(grandparents, action="children")
+
+        batch_size, x = children_of_grandparents.shape
+        # TODO compareview should be of (batchsize, x, parents.shape[-1])
+
+        breakpoint()
+        uncles = None
+
+        return self._recurse_uncles_upwards_until_root(nodes=parents, uncles=uncles, level=level-1)
+
+    def _batch_get_parents_or_children(self, nodes, action="parents"):
+        """
+
+        Args:
+            nodes: (batch_size, max_length)
+
+        Returns:
+
+        """
+
+        if action == "parents":
+            parents, buckets, _ = self.A.todense()[:, nodes].nonzero()
+        elif action == "children":
+            # by "parents" here we mean "children" for lack of a general term that encapsulates "parents or children"
+            buckets, _, parents = self.A.todense()[nodes].nonzero()
         parents, buckets = torch.tensor(parents), torch.tensor(buckets)
 
         # # for debugging only
@@ -463,18 +493,10 @@ class HierarchicalNegativeEdges:
 
         seqs = torch.split(parents, split_size_or_sections=bucket_sizes)
         packed_parents = pack_sequence(seqs, enforce_sorted=False)
+        padded_parents, _ = pad_packed_sequence(sequence=packed_parents, batch_first=True, padding_value=self.PAD)
 
-        # TODO pad_packed_sequence only takes a single padding_value, not list of values which would have been convenient in this case
-        padded_parents, _ = pad_packed_sequence(sequence=packed_parents,
-                                                batch_first=True,
-                                                padding_value=self.PAD,
-                                                total_length=None)
-        breakpoint()
+        return padded_parents
 
-        # # TODO
-        # uncles = None
-
-        return self._recurse_uncles_upwards_until_root(nodes=padded_parents, uncles=uncles, level=level-1)
 
 
 @attr.s(auto_attribs=True)
