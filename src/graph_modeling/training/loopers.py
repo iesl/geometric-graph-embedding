@@ -103,7 +103,7 @@ class TrainLooper:
         examples_this_epoch = 0
         examples_in_single_epoch = len(self.dl.dataset)
         last_time_stamp = time.time()
-        num_batch_passed = 0
+        num_batches_since_log = 0
         for iteration, batch_in in enumerate(
             tqdm(self.dl, desc=f"[{self.name}] Batch", leave=False)
         ):
@@ -132,7 +132,7 @@ class TrainLooper:
                     if torch.isnan(param.grad).any():
                         raise StopLoopingException("NaNs in grad")
 
-            num_batch_passed += 1
+            num_batches_since_log += 1
             # TODO: Refactor the following
             self.opt.step()
             # If you have a scheduler, keep track of the learning rate
@@ -153,10 +153,12 @@ class TrainLooper:
 
             if self.log_interval(self.looper_metrics["Total Examples"]):
                 current_time_stamp = time.time()
-                time_spend = (current_time_stamp - last_time_stamp) / num_batch_passed
+                average_time_per_batch = (
+                    current_time_stamp - last_time_stamp
+                ) / num_batches_since_log
+                self.logger.collect({"Average Time Per Batch": average_time_per_batch})
                 last_time_stamp = current_time_stamp
-                num_batch_passed = 0
-                self.logger.collect({"avg_time_per_batch": time_spend})
+                num_batches_since_log = 0
 
                 self.logger.collect(self.looper_metrics)
                 mean_loss = sum(self.running_losses) / (
