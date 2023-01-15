@@ -28,7 +28,7 @@ setup(
     description="Scripts to generate graphs, train and evaluate graph representations",
     install_requires=[
         "Click>=7.1.2",
-        "networkx",
+        "networkx~=2.6.3",
         "scipy",
         "scikit-learn",
         "numpy",
