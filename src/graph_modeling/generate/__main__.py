@@ -162,3 +162,13 @@ def hac(outdir, **graph_config):
 def knn_graph(outdir, **graph_config):
     """Writes out a KNN graph"""
     write_graph(outdir, type="knn_graph", **graph_config)
+
+@_common_options
+def simple_cycle(outdir, **graph_config):
+    """Writes out a directed cycle"""
+    write_graph(outdir, type="simple_cycle", **graph_config)
+
+@_common_options
+def simple_cycle_with_reverse_edge(outdir, **graph_config):
+    """Writes out a directed cycle with reverse edge"""
+    write_graph(outdir, type="simple_cycle_with_reverse_edge", **graph_config)
