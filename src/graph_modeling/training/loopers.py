@@ -31,6 +31,7 @@ from tqdm.autonotebook import trange, tqdm
 from pytorch_utils.exceptions import StopLoopingException
 from pytorch_utils.loggers import Logger
 from pytorch_utils.training import IntervalConditional, ModelCheckpoint
+from pytorch_utils.generic import LapTimer
 from .metrics import *
 
 __all__ = [
@@ -102,7 +103,7 @@ class TrainLooper:
         """
         examples_this_epoch = 0
         examples_in_single_epoch = len(self.dl.dataset)
-        last_time_stamp = time.time()
+        lap_timer = LapTimer()
         num_batches_since_log = 0
         for iteration, batch_in in enumerate(
             tqdm(self.dl, desc=f"[{self.name}] Batch", leave=False)
@@ -152,12 +153,8 @@ class TrainLooper:
             last_log = self.log_interval.last
 
             if self.log_interval(self.looper_metrics["Total Examples"]):
-                current_time_stamp = time.time()
-                average_time_per_batch = (
-                    current_time_stamp - last_time_stamp
-                ) / num_batches_since_log
+                average_time_per_batch = lap_timer.elapsed() / num_batches_since_log
                 self.logger.collect({"Average Time Per Batch": average_time_per_batch})
-                last_time_stamp = current_time_stamp
                 num_batches_since_log = 0
 
                 self.logger.collect(self.looper_metrics)
@@ -215,7 +212,7 @@ class EvalLooper:
         self.model.eval()
 
         logger.debug("Evaluating model predictions on full adjacency matrix")
-        time1 = time.time()
+        lap_timer = LapTimer()
         previous_device = next(iter(self.model.parameters())).device
         num_nodes = self.dl.dataset.num_nodes
         ground_truth = np.zeros((num_nodes, num_nodes))
@@ -253,16 +250,14 @@ class EvalLooper:
         prediction_scores_no_diag = prediction_scores[~np.eye(num_nodes, dtype=bool)]
         ground_truth_no_diag = ground_truth[~np.eye(num_nodes, dtype=bool)]
 
-        time2 = time.time()
-        logger.debug(f"Evaluation time: {time2 - time1}")
+        logger.debug(f"Evaluation time: {lap_timer.elapsed()}")
 
         # TODO: release self.dl from gpu
         del input_x, input_y
 
         logger.debug("Calculating optimal F1 score")
         metrics = calculate_optimal_F1(ground_truth_no_diag, prediction_scores_no_diag)
-        time3 = time.time()
-        logger.debug(f"F1 calculation time: {time3 - time2}")
+        logger.debug(f"F1 calculation time: {lap_timer.elapsed()}")
         logger.info(f"Metrics: {metrics}")
 
         self.logger.collect({f"[{self.name}] {k}": v for k, v in metrics.items()})
