@@ -12,6 +12,8 @@ from scipy.sparse import load_npz
 from torch import Tensor, LongTensor
 from torch.utils.data import Dataset
 
+from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence
+
 import networkx as nx
 
 from ..enums import PermutationOption
@@ -388,58 +390,91 @@ class RandomNegativeEdges:
         self._breakpoints.to(device)
         return self
 
+
 @attr.s(auto_attribs=True)
 class HierarchicalNegativeEdges:
 
     edges: Tensor = attr.ib(validator=_validate_edge_tensor)
 
     def __attrs_post_init__(self):
+
+        self.PAD = -1
+
         self.nx_graph = nx.DiGraph()
         self.nx_graph.add_edges_from(self.edges[:, [1, 0]].tolist())
-        self.root_nodes = [node for node,degree in self.nx_graph.in_degree if degree == 0]
-        self.root = self.root_nodes[0]  # TODO make this simplifying assumption just for now
+        self.root_nodes = torch.tensor([node for node, degree in self.nx_graph.in_degree if degree == 0])
+
+        # add self-loops to root nodes so that everybody has a parent (for indexing purposes only)
+        self.nx_graph.add_edges_from([(r.item(), r.item()) for r in self.root_nodes])
+
+        # hack for ignoring PAD value during recursive base case check
+        self.root_nodes = torch.cat([self.root_nodes, torch.tensor([self.PAD])])
+
         self.adjacency_matrix = nx.adjacency_matrix(self.nx_graph, nodelist=sorted(list(self.nx_graph.nodes)))
 
     def __call__(self, positive_edges: Optional[LongTensor]) -> LongTensor:
 
-        negative_roots = self._recurse_uncles_upwards_until_root(nodes=positive_edges[:, 1], uncles=[])
+        negative_roots = self._recurse_uncles_upwards_until_root(nodes=positive_edges[:, 1].unsqueeze(-1),
+                                                                 uncles={},
+                                                                 level=0)
         breakpoint()
 
-    def _recurse_uncles_upwards_until_root(self, nodes, uncles=[]):
+    def _recurse_uncles_upwards_until_root(self, nodes, uncles={}, level=0):
+        """
 
-        # TODO if all nodes are root, return uncles
-        #   - handle the case with multiple root nodes efficiently
-        #   - handle -1 padding here
-        if nodes.eq(self.root).all():
+        Args:
+            nodes: (batch_size, max_parents), where second dimension corresponds to all parents for the starting node at
+                    this level of recursion. Since different starting nodes in a DAG may have different number of parents
+                    at a given level of recursion, we pad this dimension with -1 for every starting node dimension with
+                    less than max_parents at the current level of recursion.
+            uncles: dictionary mapping from each level of recursion (going up towards root) to tensor of
+                     (batch_size, max_uncles) storing all the roots for negative samples at each level.
+            level: parent of positive example is level 0, subtract 1 for each higher level.
+
+        Returns: uncles
+
+        """
+
+        # # for debugging only
+        # nodes = torch.tensor([[279,  -1],
+        #                       [  0,  -1],
+        #                       [137, 138],
+        #                       [412,  -1]])
+
+        # base case: checks if every element of nodes is a root node
+        compareview = self.root_nodes.repeat(*nodes.shape, 1)
+        roots_only = (compareview == nodes.unsqueeze(-1)).sum(-1).all()
+        if roots_only:
+            breakpoint()
             return uncles
 
-        """
-        fetch columns for each of the nodes:
-           - any index in column with value 1 -> index is parent
-        fetch rows for each of the nodes
-           - any index in row with value 0 -> index is uncle
-        """
-
-        """"
-        since a given node may have more than one parent in a DAG, different nodes
-        might end up with a different number of "parents". The "parent_columns" tell
-        us whose parent each of the returned parents is. Use this info to bucket and
-        pad the parents according to whose parents they are.
-        """
         # TODO is there a dataset for debugging this that is a DAG and not a tree (i.e. multiple parents)?
-        parents, parent_columns = self.adjacency_matrix[:, nodes].nonzero()
-        # TODO bucket "parents" according to "parent_columns" and pad with -1's.
-        #  This will result in extra dim at the end of parents: (batch_size, max_num_parents)
+        parents, buckets, _ = self.adjacency_matrix.todense()[:, nodes].nonzero()
+        parents, buckets = torch.tensor(parents), torch.tensor(buckets)
 
-        uncles, uncles_columns = self.adjacency_matrix[nodes, :].nonzero()
-        # TODO bucket "uncle_columns" according to "uncles"
+        # # for debugging only
+        # parents = torch.tensor([0, 137, 279, 412, 138])
+        # buckets = torch.tensor([1, 2, 0, 3, 2])
 
+        ps_bs = torch.vstack([parents, buckets]).T
+        sorted_ps_bs = ps_bs[torch.sort(ps_bs[:, -1])[1]]  # sort by bucket
+        parents = sorted_ps_bs[:, 0].squeeze()
+        bucket_sizes = torch.bincount(sorted_ps_bs[:, 1]).tolist()
+
+        seqs = torch.split(parents, split_size_or_sections=bucket_sizes)
+        packed_parents = pack_sequence(seqs, enforce_sorted=False)
+
+        # TODO pad_packed_sequence only takes a single padding_value, not list of values which would have been convenient in this case
+        padded_parents, _ = pad_packed_sequence(sequence=packed_parents,
+                                                batch_first=True,
+                                                padding_value=self.PAD,
+                                                total_length=None)
         breakpoint()
 
-        # TODO
-        uncles = None
+        # # TODO
+        # uncles = None
 
-        return self._recurse_uncles_upwards_until_root(fathers, uncles)
+        return self._recurse_uncles_upwards_until_root(nodes=padded_parents, uncles=uncles, level=level-1)
 
 
 @attr.s(auto_attribs=True)
@@ -487,3 +522,39 @@ class GraphDataset(Dataset):
         self._device = device
         self.edges = self.edges.to(device)
         return self
+
+
+def test_compare_to_roots():
+    roots = torch.tensor([1, 2])
+    nodes = torch.tensor(
+        [[2, 3, 4],
+         [1, 2, 2],
+         [2, 1, 1]]
+    )
+    compareview = roots.repeat(*nodes.shape, 1)
+    breakpoint()
+    roots_only = (compareview == nodes.unsqueeze(-1)).sum(-1).all()
+
+    breakpoint()
+
+def test_adjacency_matrix():
+
+    M = torch.tensor(
+        [[0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
+    )
+    nodes = torch.tensor(
+        [[0, 0],
+         [8, 9],
+         [9, 9]]
+    )
+    nonzeros = M[:, nodes].nonzero()
+    breakpoint()
