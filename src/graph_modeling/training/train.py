@@ -375,7 +375,7 @@ def setup(**config):
                 name="Train",  # this is used for logging to describe the dataset, which is the same data as in train
                 model=model,
                 dl=dataloader,
-                batchsize=2 ** config["log_eval_batch_size"],
+                batch_size=2 ** config["log_eval_batch_size"],
             )
         )
     train_looper = TrainLooper(

@@ -101,7 +101,12 @@ class TrainLooper:
         :return: list of losses per batch
         """
         examples_this_epoch = 0
-        examples_in_single_epoch = len(self.dl.dataset)
+        if isinstance(self.dl.dataset, Sized):
+            examples_in_single_epoch = len(self.dl.dataset)
+        else:
+            raise NotImplementedError(
+                "TrainLooper currently requires datasets to implement `__len__`."
+            )
         lap_timer = LapTimer()
         num_batches_since_log = 0
         for iteration, batch_in in enumerate(
@@ -199,15 +204,23 @@ class TrainLooper:
 
 @attr.s(auto_attribs=True)
 class EvalLooper:
+    """
+    Run an evaluation loop on the full adjacency matrix.
+    The evaluation is performed on GPU in batches.
+    *Note:* To maximize available RAM we also *unload* the dataset from GPU;
+    Therefore, this eval loop should only be performed one time at the end,
+    after all training is completed.
+    """
+
     name: str
     model: Module
     dl: DataLoader
-    batchsize: int
+    batch_size: int
     logger: Logger = attr.ib(factory=Logger)
     summary_func: Callable[[Dict], Any] = lambda z: None
 
     @torch.no_grad()
-    def loop(self) -> Dict[str, Any]:
+    def loop(self) -> Tuple[Dict[str, Any], coo_matrix]:
         self.model.eval()
 
         logger.debug("Evaluating model predictions on full adjacency matrix")
@@ -235,7 +248,7 @@ class EvalLooper:
             cur_pos = 0
             while cur_pos < number_of_entries:
                 last_pos = cur_pos
-                cur_pos += self.batchsize
+                cur_pos += self.batch_size
                 if cur_pos > number_of_entries:
                     cur_pos = number_of_entries
 
@@ -244,14 +257,13 @@ class EvalLooper:
                 prediction_scores[
                     input_x[last_pos:cur_pos], input_y[last_pos:cur_pos]
                 ] = cur_preds
-                pbar.update(self.batchsize)
+                pbar.update(self.batch_size)
 
         prediction_scores_no_diag = prediction_scores[~np.eye(num_nodes, dtype=bool)]
         ground_truth_no_diag = ground_truth[~np.eye(num_nodes, dtype=bool)]
 
         logger.debug(f"Evaluation time: {lap_timer.elapsed()}")
 
-        # TODO: release self.dl from gpu
         del input_x, input_y
 
         logger.debug("Calculating optimal F1 score")
