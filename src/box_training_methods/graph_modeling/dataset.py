@@ -454,9 +454,9 @@ class HierarchicalNegativeEdges:
         grandparents = self._batch_get_parents_or_children(parents, action="parents")
         children_of_grandparents = self._batch_get_parents_or_children(grandparents, action="children")
 
+        # uncles are children of grandparents that are not parents
         compareview = parents.unsqueeze(-2).repeat((1, children_of_grandparents.shape[-1], 1))
         parents_locs = (compareview == children_of_grandparents.unsqueeze(-1)).any(-1).long()
-        breakpoint()
         parents_locs[parents_locs == 1] = self.LARGE_NUMBER
         parents_locs[parents_locs == 0] = 1
         uncles = children_of_grandparents * parents_locs
