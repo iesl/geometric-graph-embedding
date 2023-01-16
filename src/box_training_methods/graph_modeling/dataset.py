@@ -418,28 +418,7 @@ class HierarchicalNegativeEdges:
         self.A = np.hstack([self.A, np.zeros((self.A.shape[0], 1))])
         self.A = csr_matrix(self.A)
 
-        # # for debugging only (dummy row/col included in matrix)
-        # self.root_nodes = torch.tensor([0, -1])
-        # self.A = np.array([
-        #     [0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
-        #     [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-        #     [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-        #     [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
-        #     [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        #     [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0],
-        #     [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-        #     [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-        #     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        #     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        #     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        # ])
-        # self.A = csr_matrix(self.A)
-
     def __call__(self, positive_edges: Optional[LongTensor]) -> LongTensor:
-
-        # # for debugging only
-        # nodes = torch.tensor([[6],
-        #                       [8]])
 
         nodes = positive_edges[:, 1].unsqueeze(-1)
         negative_roots = self._recurse_uncles_upwards_until_root(nodes=nodes,
@@ -463,12 +442,6 @@ class HierarchicalNegativeEdges:
 
         """
 
-        # # for debugging only
-        # nodes = torch.tensor([[279,  -1],
-        #                       [  0,  -1],
-        #                       [137, 138],
-        #                       [412,  -1]])
-
         # base case: checks if every element of nodes is a child of the root node
         # TODO need more sophisticated comparison in case of multiple roots (e.g. add metaroot)
         compareview = self.root_nodes.repeat(*nodes.shape, 1)
@@ -480,12 +453,6 @@ class HierarchicalNegativeEdges:
         parents = self._batch_get_parents_or_children(nodes, action="parents")
         grandparents = self._batch_get_parents_or_children(parents, action="parents")
         children_of_grandparents = self._batch_get_parents_or_children(grandparents, action="children")
-
-        # # for debugging only
-        # parents = torch.tensor([[279,  -1],
-        #                         [  0,  -1],
-        #                         [137, 138],
-        #                         [412,  -1]])
 
         compareview = parents.unsqueeze(-2).repeat((1, children_of_grandparents.shape[-1], 1))
         parents_locs = (compareview == children_of_grandparents.unsqueeze(-1)).any(-1).long()
@@ -518,10 +485,6 @@ class HierarchicalNegativeEdges:
             # by "parents" here we mean "children" for lack of a general term that encapsulates "parents or children"
             buckets, _, parents = self.A.todense()[nodes].nonzero()
         parents, buckets = torch.tensor(parents), torch.tensor(buckets)
-
-        # # for debugging only
-        # parents = torch.tensor([0, 137, 279, 412, 138])
-        # buckets = torch.tensor([1, 2, 0, 3, 2])
 
         ps_bs = torch.vstack([parents, buckets]).T
         sorted_ps_bs = ps_bs[torch.sort(ps_bs[:, -1])[1]]  # sort by bucket
