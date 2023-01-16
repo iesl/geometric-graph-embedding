@@ -398,7 +398,8 @@ class HierarchicalNegativeEdges:
 
     def __attrs_post_init__(self):
 
-        self.PAD = -1
+        self.PAD = -1                       # also hacks into last dummy row and column of adjacency matrix
+        self.LARGE_NUMBER = 999999999       # make sure it's bigger than the largest node number
 
         self.nx_graph = nx.DiGraph()
         self.nx_graph.add_edges_from(self.edges[:, [1, 0]].tolist())
@@ -417,14 +418,36 @@ class HierarchicalNegativeEdges:
         self.A = np.hstack([self.A, np.zeros((self.A.shape[0], 1))])
         self.A = csr_matrix(self.A)
 
+        # # for debugging only (dummy row/col included in matrix)
+        # self.root_nodes = torch.tensor([0, -1])
+        # self.A = np.array([
+        #     [0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+        #     [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+        #     [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+        #     [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
+        #     [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+        #     [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0],
+        #     [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+        #     [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+        #     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        #     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        #     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        # ])
+        # self.A = csr_matrix(self.A)
+
     def __call__(self, positive_edges: Optional[LongTensor]) -> LongTensor:
 
-        negative_roots = self._recurse_uncles_upwards_until_root(nodes=positive_edges[:, 1].unsqueeze(-1),
-                                                                 uncles={},
+        # # for debugging only
+        # nodes = torch.tensor([[6],
+        #                       [8]])
+
+        nodes = positive_edges[:, 1].unsqueeze(-1)
+        negative_roots = self._recurse_uncles_upwards_until_root(nodes=nodes,
+                                                                 uncles_per_level={},
                                                                  level=0)
         breakpoint()
 
-    def _recurse_uncles_upwards_until_root(self, nodes, uncles={}, level=0):
+    def _recurse_uncles_upwards_until_root(self, nodes, uncles_per_level={}, level=0):
         """
 
         Args:
@@ -432,11 +455,11 @@ class HierarchicalNegativeEdges:
                     this level of recursion. Since different starting nodes in a DAG may have different number of parents
                     at a given level of recursion, we pad this dimension with -1 for every starting node dimension with
                     less than max_length at the current level of recursion.
-            uncles: dictionary mapping from each level of recursion (going up towards root) to tensor of
+            uncles_per_level: dictionary mapping from each level of recursion (going up towards root) to tensor of
                      (batch_size, max_length) storing all the roots for negative samples at each level.
             level: parent of positive example is level 0, subtract 1 for each higher level.
 
-        Returns: uncles
+        Returns: uncles_per_level
 
         """
 
@@ -446,24 +469,37 @@ class HierarchicalNegativeEdges:
         #                       [137, 138],
         #                       [412,  -1]])
 
-        # base case: checks if every element of nodes is a root node
+        # base case: checks if every element of nodes is a child of the root node
+        # TODO need more sophisticated comparison in case of multiple roots (e.g. add metaroot)
         compareview = self.root_nodes.repeat(*nodes.shape, 1)
         roots_only = (compareview == nodes.unsqueeze(-1)).sum(-1).all()
         if roots_only:
-            return uncles
+            return uncles_per_level
 
         # to get uncles, we must get all children of the grandparents, and subtract the parents
         parents = self._batch_get_parents_or_children(nodes, action="parents")
         grandparents = self._batch_get_parents_or_children(parents, action="parents")
         children_of_grandparents = self._batch_get_parents_or_children(grandparents, action="children")
 
-        batch_size, x = children_of_grandparents.shape
-        # TODO compareview should be of (batchsize, x, parents.shape[-1])
+        # # for debugging only
+        # parents = torch.tensor([[279,  -1],
+        #                         [  0,  -1],
+        #                         [137, 138],
+        #                         [412,  -1]])
 
+        compareview = parents.unsqueeze(-2).repeat((1, children_of_grandparents.shape[-1], 1))
+        parents_locs = (compareview == children_of_grandparents.unsqueeze(-1)).any(-1).long()
         breakpoint()
-        uncles = None
+        parents_locs[parents_locs == 1] = self.LARGE_NUMBER
+        parents_locs[parents_locs == 0] = 1
+        uncles = children_of_grandparents * parents_locs
+        uncles[uncles <= -self.LARGE_NUMBER] = -1
+        uncles[uncles >= self.LARGE_NUMBER] = -1
 
-        return self._recurse_uncles_upwards_until_root(nodes=parents, uncles=uncles, level=level-1)
+        uncles_per_level[level] = uncles
+        level -= 1
+
+        return self._recurse_uncles_upwards_until_root(nodes=parents, uncles_per_level=uncles_per_level, level=level)
 
     def _batch_get_parents_or_children(self, nodes, action="parents"):
         """
@@ -475,6 +511,7 @@ class HierarchicalNegativeEdges:
 
         """
 
+        # TODO currently this converts A to a dense matrix - need to figure out advanced indexing in sparse matrix
         if action == "parents":
             parents, buckets, _ = self.A.todense()[:, nodes].nonzero()
         elif action == "children":
@@ -496,7 +533,6 @@ class HierarchicalNegativeEdges:
         padded_parents, _ = pad_packed_sequence(sequence=packed_parents, batch_first=True, padding_value=self.PAD)
 
         return padded_parents
-
 
 
 @attr.s(auto_attribs=True)
@@ -544,39 +580,3 @@ class GraphDataset(Dataset):
         self._device = device
         self.edges = self.edges.to(device)
         return self
-
-
-def test_compare_to_roots():
-    roots = torch.tensor([1, 2])
-    nodes = torch.tensor(
-        [[2, 3, 4],
-         [1, 2, 2],
-         [2, 1, 1]]
-    )
-    compareview = roots.repeat(*nodes.shape, 1)
-    breakpoint()
-    roots_only = (compareview == nodes.unsqueeze(-1)).sum(-1).all()
-
-    breakpoint()
-
-def test_adjacency_matrix():
-
-    M = torch.tensor(
-        [[0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
-         [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-         [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-         [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
-         [0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-         [0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
-         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
-    )
-    nodes = torch.tensor(
-        [[0, 0],
-         [8, 9],
-         [9, 9]]
-    )
-    nonzeros = M[:, nodes].nonzero()
-    breakpoint()
