@@ -463,6 +463,7 @@ class HierarchicalNegativeEdges:
         uncles = children_of_grandparents * parents_locs
         uncles[uncles <= -self.LARGE_NUMBER] = -1
         uncles[uncles >= self.LARGE_NUMBER] = -1
+        uncles[uncles != -1] -= 1           # shift nodes back by 1 (original indices)
 
         uncles_per_level[level] = uncles
         level -= 1
