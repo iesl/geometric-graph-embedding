@@ -402,14 +402,16 @@ class HierarchicalNegativeEdges:
         self.LARGE_NUMBER = 999999999       # make sure it's bigger than the largest node number
 
         self.nx_graph = nx.DiGraph()
-        self.nx_graph.add_edges_from(self.edges[:, [1, 0]].tolist())
+
+        # assume nodes are numbered contiguously 0 through #nodes, shift by one to add meta root at 0
+        self.nx_graph.add_edges_from((self.edges[:, [1, 0]] + 1).tolist())
         self.root_nodes = torch.tensor([node for node, degree in self.nx_graph.in_degree if degree == 0])
 
-        # add self-loops to root nodes so that everybody has a parent (for indexing purposes only)
-        self.nx_graph.add_edges_from([(r.item(), r.item()) for r in self.root_nodes])
+        # add edges from meta root to itself and root nodes so that everybody has a parent (for indexing purposes only)
+        self.nx_graph.add_edges_from([(0, 0)] + [(0, r.item()) for r in self.root_nodes])
 
         # hack for ignoring PAD value during recursive base case check
-        self.root_nodes = torch.cat([self.root_nodes, torch.tensor([self.PAD])])
+        self.meta_root = torch.tensor([0, self.PAD])
 
         self.A = nx.adjacency_matrix(self.nx_graph, nodelist=sorted(list(self.nx_graph.nodes)))
 
@@ -420,7 +422,7 @@ class HierarchicalNegativeEdges:
 
     def __call__(self, positive_edges: Optional[LongTensor]) -> LongTensor:
 
-        nodes = positive_edges[:, 1].unsqueeze(-1)
+        nodes = positive_edges[:, 1].unsqueeze(-1) + 1      # shift by 1 to account for meta root
         negative_roots = self._recurse_uncles_upwards_until_root(nodes=nodes,
                                                                  uncles_per_level={},
                                                                  level=0)
@@ -442,9 +444,8 @@ class HierarchicalNegativeEdges:
 
         """
 
-        # base case: checks if every element of nodes is a child of the root node
-        # TODO need more sophisticated comparison in case of multiple roots (e.g. add metaroot)
-        compareview = self.root_nodes.repeat(*nodes.shape, 1)
+        # base case: checks if every element of nodes is a child of the meta root
+        compareview = self.meta_root.repeat(*nodes.shape, 1)
         roots_only = (compareview == nodes.unsqueeze(-1)).sum(-1).all()
         if roots_only:
             return uncles_per_level
