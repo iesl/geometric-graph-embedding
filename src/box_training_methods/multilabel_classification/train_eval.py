@@ -10,7 +10,8 @@ from torch.nn import Module
 from pytorch_utils import TensorDataLoader, cuda_if_available
 
 from .dataset import edges_from_hierarchy_edge_list, ARFFReader, InstanceLabelsDataset
-from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, HierarchicalNegativeEdges, GraphDataset
+from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, \
+    HierarchicalNegativeEdgesBatched, HierarchicalNegativeEdgesDebug, GraphDataset
 
 from box_training_methods.models.box import BoxMinDeltaSoftplus, TBox
 from box_training_methods.graph_modeling.loss import (
@@ -116,7 +117,7 @@ def setup_training_data(device: Union[str, torch.device], **config) -> \
     #     device=device,
     #     permutation_option=config["negatives_permutation_option"],
     # )
-    negative_sampler = HierarchicalNegativeEdges(
+    negative_sampler = HierarchicalNegativeEdgesBatched(
         edges=taxonomy_edges
     )
 

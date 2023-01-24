@@ -41,6 +41,13 @@ def _common_options(func):
 
 
 @_common_options
+@click.option("--which", default="balanced-tree", help="balanced-tree or dag")
+def hierarchical_negative_sampling_debugging_graphs(outdir, **graph_config):
+    """Writes out one of two mini graphs for debugging hierarchical negative sampling"""
+    write_graph(outdir, type="hierarchical_negative_sampling_debugging_graphs", **graph_config)
+
+
+@_common_options
 @click.option("--branching", default=2, help="branching factor")
 def balanced_tree(outdir, **graph_config):
     """Writes out a balanced directed tree"""

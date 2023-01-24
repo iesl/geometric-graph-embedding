@@ -28,7 +28,8 @@ __all__ = [
     "convert_ints_to_edges",
     "RandomEdges",
     "RandomNegativeEdges",
-    "HierarchicalNegativeEdges",
+    "HierarchicalNegativeEdgesDebug",
+    "HierarchicalNegativeEdgesBatched",
     "GraphDataset",
 ]
 
@@ -392,52 +393,69 @@ class RandomNegativeEdges:
 
 
 @attr.s(auto_attribs=True)
-class HierarchicalNegativeEdges:
+class HierarchicalNegativeEdgesBatched:
 
     edges: Tensor = attr.ib(validator=_validate_edge_tensor)
 
     def __attrs_post_init__(self):
 
-        self.PAD = -1                       # also hacks into last dummy row and column of adjacency matrix
-        self.LARGE_NUMBER = 999999999       # make sure it's bigger than the largest node number
+        nx_graph = nx.DiGraph()
 
-        self.nx_graph = nx.DiGraph()
+        # assume nodes are numbered contiguously 0 through #nodes, shift by one to add meta root as first node (for now)
+        nx_graph.add_edges_from((self.edges + 1).tolist())
+        self.root_nodes = torch.tensor([node for node, degree in nx_graph.in_degree if degree == 0])
 
-        # assume nodes are numbered contiguously 0 through #nodes, shift by one to add meta root at 0
-        self.nx_graph.add_edges_from((self.edges[:, [1, 0]] + 1).tolist())
-        self.root_nodes = torch.tensor([node for node, degree in self.nx_graph.in_degree if degree == 0])
+        # add edges from meta root (which starts out as index 0, then gets bumped to index 1 by padding which is 0) to
+        # root nodes so that everybody has a parent (for indexing purposes only)
+        nx_graph.add_edges_from([(0, r.item()) for r in self.root_nodes])
 
-        # add edges from meta root to itself and root nodes so that everybody has a parent (for indexing purposes only)
-        self.nx_graph.add_edges_from([(0, 0)] + [(0, r.item()) for r in self.root_nodes])
+        A = nx.adjacency_matrix(nx_graph, nodelist=sorted(list(nx_graph.nodes)))
 
-        # hack for ignoring PAD value during recursive base case check
-        self.meta_root = torch.tensor([0, self.PAD])
+        # TODO calculate max depth (max # edges) via dfs
+        self.max_depth = 15
+        A_ = A.copy()
+        for _ in range(self.max_depth):
+            A_ += A_ @ A
+        A_[A_ > 0] = 1
 
-        self.A = nx.adjacency_matrix(self.nx_graph, nodelist=sorted(list(self.nx_graph.nodes)))
+        # add dummy self-looping row and column at the beginning for padding token
+        A = np.vstack([np.zeros((A.shape[0],)), A.todense()])
+        A = np.hstack([np.zeros((A.shape[0], 1)), A])
+        A[0, 0] = 1
 
-        # add dummy row of zeros and column of zeros to end of matrix, so that -1 padding will index the zeros
-        self.A = np.vstack([self.A.todense(), np.zeros((self.A.shape[0],))])
-        self.A = np.hstack([self.A, np.zeros((self.A.shape[0], 1))])
-        self.A = csr_matrix(self.A)
+        A_ = np.vstack([np.zeros((A_.shape[0],)), A_.todense()])
+        A_ = np.hstack([np.zeros((A_.shape[0], 1)), A_])
+        A_[0, 0] = 1
 
-    def __call__(self, positive_edges: Optional[LongTensor]) -> LongTensor:
+        self.A = csr_matrix(A)
+        self.A_ = csr_matrix(A_)
 
-        nodes = positive_edges[:, 1].unsqueeze(-1) + 1      # shift by 1 to account for meta root
-        negative_roots = self._recurse_uncles_upwards_until_root(nodes=nodes,
-                                                                 uncles_per_level={},
-                                                                 level=0)
+        self.PAD = 0
+        self.METAROOT = 1
+        self.base_case_nodes = torch.tensor([self.PAD, self.METAROOT])
+
+        self.precompute_negatives()
+
+    def precompute_negatives(self):
+
+        nodes = torch.arange(2, self.A.shape[0]).unsqueeze(-1)   # exclude pad at index 0 and meta-root at index 1
+
+        negative_roots = self._get_negative_roots(nodes=nodes, negative_roots=torch.zeros((nodes.shape[0], 1)))
+        negative_roots = _batch_prune_and_sort(negative_roots, pad=self.PAD) - 2    # shift back pad and meta-root
+        self.PAD = -1
+        negative_roots[negative_roots < 0] = self.PAD
         breakpoint()
 
-    def _recurse_uncles_upwards_until_root(self, nodes, uncles_per_level={}, level=0):
+    def _get_negative_roots(self, nodes, negative_roots):
         """
 
         Args:
-            nodes: (batch_size, max_length), where second dimension corresponds to all parents for the starting node at
+            nodes: (batch_size, max_nodes), where second dimension corresponds to all parents for the starting node at
                     this level of recursion. Since different starting nodes in a DAG may have different number of parents
                     at a given level of recursion, we pad this dimension with -1 for every starting node dimension with
-                    less than max_length at the current level of recursion.
+                    less than max_nodes at the current level of recursion.
             uncles_per_level: dictionary mapping from each level of recursion (going up towards root) to tensor of
-                     (batch_size, max_length) storing all the roots for negative samples at each level.
+                     (batch_size, max_negatives) storing all the roots for negative samples at each level.
             level: parent of positive example is level 0, subtract 1 for each higher level.
 
         Returns: uncles_per_level
@@ -445,59 +463,198 @@ class HierarchicalNegativeEdges:
         """
 
         # base case: checks if every element of nodes is a child of the meta root
-        compareview = self.meta_root.repeat(*nodes.shape, 1)
+        compareview = self.base_case_nodes.repeat(*nodes.shape, 1)
         roots_only = (compareview == nodes.unsqueeze(-1)).sum(-1).all()
         if roots_only:
-            return uncles_per_level
+            return negative_roots
 
         # to get uncles, we must get all children of the grandparents, and subtract the parents
-        parents = self._batch_get_parents_or_children(nodes, action="parents")
-        grandparents = self._batch_get_parents_or_children(parents, action="parents")
-        children_of_grandparents = self._batch_get_parents_or_children(grandparents, action="children")
+        parents = _batch_get_parents_or_children(nodes,
+                                                 action="parents",
+                                                 adjacency_matrix=self.A)
+        children_of_parents = _batch_get_parents_or_children(parents,
+                                                             action="children",
+                                                             adjacency_matrix=self.A)
 
-        # uncles are children of grandparents that are not parents
-        compareview = parents.unsqueeze(-2).repeat((1, children_of_grandparents.shape[-1], 1))
-        parents_locs = (compareview == children_of_grandparents.unsqueeze(-1)).any(-1).long()
-        parents_locs[parents_locs == 1] = self.LARGE_NUMBER
-        parents_locs[parents_locs == 0] = 1
-        uncles = children_of_grandparents * parents_locs
-        uncles[uncles <= -self.LARGE_NUMBER] = -1
-        uncles[uncles >= self.LARGE_NUMBER] = -1
-        uncles[uncles != -1] -= 1           # shift nodes back by 1 (original indices)
+        # negatives (siblings) at current level are children of parents that are not current nodes
+        #  (i.e. siblings to original nodes if first recursive call, uncles otherwise)
+        negative_roots_at_current_level = _batch_set_difference(b1=children_of_parents, b2=nodes)
 
-        uncles_per_level[level] = uncles
-        level -= 1
+        # necessary to subtract descendants of current-level roots at each step to only retain highest-level negatives
+        descendants_of_negative_roots_at_current_level = _batch_get_parents_or_children(negative_roots_at_current_level,
+                                                                                        action="children",
+                                                                                        adjacency_matrix=self.A_)
 
-        return self._recurse_uncles_upwards_until_root(nodes=parents, uncles_per_level=uncles_per_level, level=level)
+        negative_roots = _batch_set_union(b1=negative_roots, b2=negative_roots_at_current_level)
+        negative_roots = _batch_set_difference(b1=negative_roots, b2=descendants_of_negative_roots_at_current_level)
 
-    def _batch_get_parents_or_children(self, nodes, action="parents"):
-        """
+        return self._get_negative_roots(nodes=parents, negative_roots=negative_roots)
 
-        Args:
-            nodes: (batch_size, max_length)
 
-        Returns:
+def _batch_get_parents_or_children(nodes, adjacency_matrix, action="parents", pad=0):
+    """
 
-        """
+    Args:
+        nodes: (batch_size, max_length)
+        adjacency_matrix: CSR sparse matrix. May be adjacency matrix or full transitive closure (TC) matrix
+        action: get "children" (descendants if TC matrix provided) or "parents" (ancestors if TC)
+        pad:
 
-        # TODO currently this converts A to a dense matrix - need to figure out advanced indexing in sparse matrix
-        if action == "parents":
-            parents, buckets, _ = self.A.todense()[:, nodes].nonzero()
-        elif action == "children":
-            # by "parents" here we mean "children" for lack of a general term that encapsulates "parents or children"
-            buckets, _, parents = self.A.todense()[nodes].nonzero()
-        parents, buckets = torch.tensor(parents), torch.tensor(buckets)
+    Returns: parents/children for each entry in batch, padded into tensor
 
-        ps_bs = torch.vstack([parents, buckets]).T
-        sorted_ps_bs = ps_bs[torch.sort(ps_bs[:, -1])[1]]  # sort by bucket
-        parents = sorted_ps_bs[:, 0].squeeze()
-        bucket_sizes = torch.bincount(sorted_ps_bs[:, 1]).tolist()
+    """
 
-        seqs = torch.split(parents, split_size_or_sections=bucket_sizes)
-        packed_parents = pack_sequence(seqs, enforce_sorted=False)
-        padded_parents, _ = pad_packed_sequence(sequence=packed_parents, batch_first=True, padding_value=self.PAD)
+    # TODO currently this converts A to a dense matrix - need to figure out advanced indexing in sparse matrix
+    if action == "parents":
+        parents = adjacency_matrix.todense()[:, nodes]
+        parents, buckets, _ = parents.nonzero()
+    elif action == "children":
+        # by "parents" here we mean "children" for lack of a general term that encapsulates "parents or children"
+        parents = adjacency_matrix.todense()[nodes]
+        buckets, _, parents = parents.nonzero()
 
-        return padded_parents
+    parents, buckets = torch.tensor(parents), torch.tensor(buckets)
+
+    ps_bs = torch.vstack([parents, buckets]).T
+    sorted_ps_bs = ps_bs[torch.sort(ps_bs[:, -1])[1]]  # sort by bucket
+    parents = sorted_ps_bs[:, 0].squeeze()
+    bucket_sizes = torch.bincount(sorted_ps_bs[:, 1]).tolist()
+
+    seqs = torch.split(parents, split_size_or_sections=bucket_sizes)
+    packed_parents = pack_sequence(seqs, enforce_sorted=False)
+    padded_parents, _ = pad_packed_sequence(sequence=packed_parents, batch_first=True, padding_value=pad)
+
+    return padded_parents
+
+
+def _batch_set_difference(
+        b1=torch.tensor([[1, 2, 3, 4, 5],
+                         [5, 4, 3, 2, 1]]),
+        b2=torch.tensor([[6, 7, 5],
+                         [1, 4, 8]])):
+    """
+    Args:
+        b1: (batch_size, n1)
+        b2: (batch_size, n2)
+
+    Returns: b1 - b2, i.e. zeroes out all elements in b1 that are found in b2
+
+    """
+
+    compareview = b2.unsqueeze(-2).repeat((1, b1.shape[-1], 1))     # (batch_size, n1, n2)
+    b2_mask = (~(compareview == b1.unsqueeze(-1)).any(-1)).long()   # compared with (batch_size, n1, 1)
+    diff = b1 * b2_mask                                             # zero out all elements in b1 that are in b2
+
+    return diff
+
+
+def _batch_set_union(b1, b2):
+    """
+
+    Args:
+        b1: (batch_size, n1)
+        b2: (batch_size, n2)
+
+    Returns: currently just concatenate, don't worry about redundancy
+
+    """
+
+    return torch.cat([b1, b2], dim=-1)
+
+
+def _batch_prune_and_sort(nodes, pad=0):
+    """
+
+    Args:
+        nodes: (batch_size, n)
+
+    Returns: moves padding tokens to the end, sorts non-padding indices and removes repeats, e.g.
+
+             [[2,  4,  0,  0,  4,  0],               [[2,  4,  0,  0],
+              [7,  0,  7,  1,  2,  3]]      =>        [1,  2,  3,  7]]
+
+        Do this only once after recursion is complete because it's expensive, and not pruning/sorting doesn't affect
+        correctness during recursion
+    """
+
+    pruned_sorted_rows = [torch.tensor(sorted(list(set(r.tolist()) - {pad}))) for r in nodes]
+    packed = pack_sequence(pruned_sorted_rows, enforce_sorted=False)
+    padded, _ = pad_packed_sequence(sequence=packed, batch_first=True, padding_value=pad)
+    return padded
+
+
+@attr.s(auto_attribs=True)
+class HierarchicalNegativeEdgesDebug:
+
+    edges: Tensor = attr.ib(validator=_validate_edge_tensor)
+
+    def __attrs_post_init__(self):
+
+        # create graph with meta-root node
+        self.nx_graph = nx.DiGraph(self.edges.tolist())
+        self.root_nodes = [node for node, degree in self.nx_graph.in_degree if degree == 0]
+        self.nx_graph.add_edges_from([("M", "M")] + [("M", r) for r in self.root_nodes])
+
+        self.precompute_negatives()
+
+    def __call__(self, positive_edges: Optional[LongTensor]) -> LongTensor:
+
+        breakpoint()
+
+    def precompute_negatives(self):
+
+        node_to_uncles = dict()
+        uncles_per_node = list()
+        for node in self.nx_graph.nodes:
+            if node != "M":
+                uncles = self._get_uncles_for_nodes_recursive(nodes={node}, uncles=set())
+                node_to_uncles[node] = uncles
+                uncles_per_node.append(torch.tensor(uncles))
+
+        packed = pack_sequence(sequences=uncles_per_node, enforce_sorted=False)
+        padded, lens = pad_packed_sequence(sequence=packed, batch_first=True, padding_value=-1)
+
+        breakpoint()
+
+    def _get_uncles_for_nodes_recursive(self, nodes, uncles):
+
+        # base case: meta-root
+        if len(nodes) == 1 and list(nodes)[0] == "M":
+            return sorted(list(uncles))
+
+        parents = self._get_parents(nodes)
+        grandparents = self._get_parents(parents)
+        children_of_grandparents = self._get_children(grandparents)
+
+        uncles.update(children_of_grandparents - parents - nodes - {"M"})
+        uncles -= self._get_descendants(uncles)
+
+        return self._get_uncles_for_nodes_recursive(nodes=parents, uncles=uncles)
+
+    def _get_parents(self, nodes):
+
+        parents = set()
+        for node in nodes:
+            parents.update(self.nx_graph.predecessors(node))
+
+        return parents
+
+    def _get_children(self, nodes):
+
+        children = set()
+        for node in nodes:
+            children.update({c for c in self.nx_graph[node].keys()})
+
+        return children
+
+    def _get_descendants(self, nodes):
+
+        descendants = set()
+        for node in nodes:
+            if node != "M":
+                descendants.update(nx.descendants(self.nx_graph, node))
+
+        return descendants
 
 
 @attr.s(auto_attribs=True)
@@ -545,3 +702,5 @@ class GraphDataset(Dataset):
         self._device = device
         self.edges = self.edges.to(device)
         return self
+
+
