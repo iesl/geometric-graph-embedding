@@ -418,14 +418,16 @@ class HierarchicalNegativeEdgesBatched:
             A_ += A_ @ A
         A_[A_ > 0] = 1
 
-        # add dummy self-looping row and column at the beginning for padding token
+        # add dummy self-looping row and column at the beginning for padding token and for meta-root
         A = np.vstack([np.zeros((A.shape[0],)), A.todense()])
         A = np.hstack([np.zeros((A.shape[0], 1)), A])
         A[0, 0] = 1
+        # A[0, 1] = 1     # trap meta-root parent to pad
 
         A_ = np.vstack([np.zeros((A_.shape[0],)), A_.todense()])
         A_ = np.hstack([np.zeros((A_.shape[0], 1)), A_])
         A_[0, 0] = 1
+        # A_[0, 1] = 1    # trap meta-root parent to pad
 
         self.A = csr_matrix(A)
         self.A_ = csr_matrix(A_)
@@ -434,7 +436,8 @@ class HierarchicalNegativeEdgesBatched:
         self.METAROOT = 1
         self.base_case_nodes = torch.tensor([self.PAD, self.METAROOT])
 
-        self.precompute_negatives()
+        self.negative_roots = self.precompute_negatives()
+        breakpoint()
 
     def precompute_negatives(self):
 
@@ -444,7 +447,8 @@ class HierarchicalNegativeEdgesBatched:
         negative_roots = _batch_prune_and_sort(negative_roots, pad=self.PAD) - 2    # shift back pad and meta-root
         self.PAD = -1
         negative_roots[negative_roots < 0] = self.PAD
-        breakpoint()
+
+        return negative_roots
 
     def _get_negative_roots(self, nodes, negative_roots):
         """
@@ -468,7 +472,7 @@ class HierarchicalNegativeEdgesBatched:
         if roots_only:
             return negative_roots
 
-        # to get uncles, we must get all children of the grandparents, and subtract the parents
+        # to get siblings, we must get all children of the parents, and subtract the parents
         parents = _batch_get_parents_or_children(nodes,
                                                  action="parents",
                                                  adjacency_matrix=self.A)
@@ -491,7 +495,7 @@ class HierarchicalNegativeEdgesBatched:
         return self._get_negative_roots(nodes=parents, negative_roots=negative_roots)
 
 
-def _batch_get_parents_or_children(nodes, adjacency_matrix, action="parents", pad=0):
+def _batch_get_parents_or_children(nodes, adjacency_matrix, action="parents", pad=0, metaroot=1):
     """
 
     Args:
@@ -506,6 +510,9 @@ def _batch_get_parents_or_children(nodes, adjacency_matrix, action="parents", pa
 
     # TODO currently this converts A to a dense matrix - need to figure out advanced indexing in sparse matrix
     if action == "parents":
+        # replace METAROOT with PAD if getting parents, because otherwise pack_sequence will break on all-zero parents
+        #  of METAROOT which will yield an empty sequence to pack. This won't affect the correctness of algorithm.
+        nodes[nodes == metaroot] = pad
         parents = adjacency_matrix.todense()[:, nodes]
         parents, buckets, _ = parents.nonzero()
     elif action == "children":
@@ -578,6 +585,7 @@ def _batch_prune_and_sort(nodes, pad=0):
     """
 
     pruned_sorted_rows = [torch.tensor(sorted(list(set(r.tolist()) - {pad}))) for r in nodes]
+    pruned_sorted_rows = [r if len(r) > 0 else torch.tensor([0]) for r in pruned_sorted_rows]
     packed = pack_sequence(pruned_sorted_rows, enforce_sorted=False)
     padded, _ = pad_packed_sequence(sequence=packed, batch_first=True, padding_value=pad)
     return padded
