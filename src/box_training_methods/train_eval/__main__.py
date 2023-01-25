@@ -106,6 +106,12 @@ class IntOrPercent(click.ParamType):
     help="margin for MaxMarginWithLogitsNegativeSamplingLoss or BCEWithDistancesNegativeSamplingLoss (unused otherwise)",
 )
 @click.option(
+    "--negative_sampler",
+    type=str,
+    default="random",
+    help="whether to use RandomNegativeEdges or HierarchicalNegativeEdgesBatched"
+)
+@click.option(
     "--negative_ratio",
     type=int,
     default=128,

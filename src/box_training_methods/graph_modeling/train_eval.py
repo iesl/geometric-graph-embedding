@@ -252,16 +252,21 @@ def setup_training_data(device: Union[str, torch.device], **config) -> GraphData
         else:
             avoid_edges = torch.cat((training_edges, diag))
 
-    # negative_sampler = RandomNegativeEdges(
-    #     num_nodes=num_nodes,
-    #     negative_ratio=config["negative_ratio"],
-    #     avoid_edges=avoid_edges,
-    #     device=device,
-    #     permutation_option=config["negatives_permutation_option"],
-    # )
-    negative_sampler = HierarchicalNegativeEdgesBatched(
-        edges=training_edges
-    )
+    if config["negative_sampler"] == "random":
+        negative_sampler = RandomNegativeEdges(
+            num_nodes=num_nodes,
+            negative_ratio=config["negative_ratio"],
+            avoid_edges=avoid_edges,
+            device=device,
+            permutation_option=config["negatives_permutation_option"],
+        )
+    elif config["negative_sampler"] == "hierarchical":
+        negative_sampler = HierarchicalNegativeEdgesBatched(
+            edges=training_edges,
+            negative_ratio=config["negative_ratio"]
+        )
+    else:
+        raise NotImplementedError
 
     dataset = GraphDataset(
         training_edges, num_nodes=num_nodes, negative_sampler=negative_sampler

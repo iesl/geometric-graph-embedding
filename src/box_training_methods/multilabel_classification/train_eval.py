@@ -110,16 +110,22 @@ def setup_training_data(device: Union[str, torch.device], **config) -> \
     taxonomy_edges, taxonomy_label_encoder = edges_from_hierarchy_edge_list(edge_file=hierarchy_edge_list_file)
     label_set = taxonomy_label_encoder.classes_
     num_labels = len(label_set)
-    # negative_sampler = RandomNegativeEdges(
-    #     num_nodes=num_labels,
-    #     negative_ratio=config["negative_ratio"],
-    #     avoid_edges=None,  # TODO understand the functionality in @mboratko's code
-    #     device=device,
-    #     permutation_option=config["negatives_permutation_option"],
-    # )
-    negative_sampler = HierarchicalNegativeEdgesBatched(
-        edges=taxonomy_edges
-    )
+
+    if config["negative_sampler"] == "random":
+        negative_sampler = RandomNegativeEdges(
+            num_nodes=num_labels,
+            negative_ratio=config["negative_ratio"],
+            avoid_edges=None,  # TODO understand the functionality in @mboratko's code
+            device=device,
+            permutation_option=config["negatives_permutation_option"],
+        )
+    elif config["negative_sampler"] == "hierarchical":
+        negative_sampler = HierarchicalNegativeEdgesBatched(
+            edges=taxonomy_edges,
+            negative_ratio=config["negative_ratio"]
+        )
+    else:
+        raise NotImplementedError
 
     taxonomy_dataset = GraphDataset(
         taxonomy_edges, num_nodes=num_labels, negative_sampler=negative_sampler
