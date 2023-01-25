@@ -10,7 +10,7 @@ import torch
 from loguru import logger
 from scipy.sparse import load_npz, csr_matrix
 from torch import Tensor, LongTensor
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, WeightedRandomSampler
 
 from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence
 
@@ -397,6 +397,7 @@ class HierarchicalNegativeEdgesBatched:
 
     edges: Tensor = attr.ib(validator=_validate_edge_tensor)
     weight_strategy: str = "number_of_descendants"  # or "depth"
+    negative_ratio: int = 16
 
     def __attrs_post_init__(self):
 
@@ -438,7 +439,8 @@ class HierarchicalNegativeEdgesBatched:
 
         if self.weight_strategy == "number_of_descendants":
             # TODO this is a very inefficient way to collect this info, do it in a single traversal
-            node_to_weight = {n - 1: len(nx.descendants(G, n)) for n in G.nodes if n != 0}
+            # add 1 to # descendants because otherwise leaf nodes will have 0 weight
+            node_to_weight = {n - 1: len(nx.descendants(G, n)) + 1 for n in G.nodes if n != 0}
         else:
             # calculate node depths (used as weights); METAROOT has index 0 in G
             # root nodes are at depth 1, successive levels at depths 2, 3, 4...
@@ -463,7 +465,12 @@ class HierarchicalNegativeEdgesBatched:
         tails = positive_edges[..., 1]
         negative_candidates = self.negative_roots[tails].long()
         negative_candidates_weights = self.weights(negative_candidates).squeeze()
-        breakpoint()
+        negative_nodes = torch.tensor(list(WeightedRandomSampler(weights=negative_candidates_weights,
+                                                                 num_samples=self.negative_ratio,
+                                                                 replacement=True)))
+        tails = tails.unsqueeze(-1).expand(-1, self.negative_ratio)
+        negative_edges = torch.stack([negative_nodes, tails], dim=-1)
+        return negative_edges
 
     def precompute_negatives(self):
 
