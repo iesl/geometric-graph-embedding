@@ -396,20 +396,21 @@ class RandomNegativeEdges:
 class HierarchicalNegativeEdgesBatched:
 
     edges: Tensor = attr.ib(validator=_validate_edge_tensor)
+    weight_strategy: str = "number_of_descendants"  # or "depth"
 
     def __attrs_post_init__(self):
 
-        nx_graph = nx.DiGraph()
+        G = nx.DiGraph()
 
         # assume nodes are numbered contiguously 0 through #nodes, shift by one to add meta root as first node (for now)
-        nx_graph.add_edges_from((self.edges + 1).tolist())
-        self.root_nodes = torch.tensor([node for node, degree in nx_graph.in_degree if degree == 0])
+        G.add_edges_from((self.edges + 1).tolist())
+        self.root_nodes = torch.tensor([node for node, degree in G.in_degree if degree == 0])
 
         # add edges from meta root (which starts out as index 0, then gets bumped to index 1 by padding which is 0) to
         # root nodes so that everybody has a parent (for indexing purposes only)
-        nx_graph.add_edges_from([(0, r.item()) for r in self.root_nodes])
+        G.add_edges_from([(0, r.item()) for r in self.root_nodes])
 
-        A = nx.adjacency_matrix(nx_graph, nodelist=sorted(list(nx_graph.nodes)))
+        A = nx.adjacency_matrix(G, nodelist=sorted(list(G.nodes)))
 
         # TODO calculate max depth (max # edges) via dfs
         self.max_depth = 15
@@ -422,21 +423,46 @@ class HierarchicalNegativeEdgesBatched:
         A = np.vstack([np.zeros((A.shape[0],)), A.todense()])
         A = np.hstack([np.zeros((A.shape[0], 1)), A])
         A[0, 0] = 1
-        # A[0, 1] = 1     # trap meta-root parent to pad
 
         A_ = np.vstack([np.zeros((A_.shape[0],)), A_.todense()])
         A_ = np.hstack([np.zeros((A_.shape[0], 1)), A_])
         A_[0, 0] = 1
-        # A_[0, 1] = 1    # trap meta-root parent to pad
 
         self.A = csr_matrix(A)
         self.A_ = csr_matrix(A_)
+        self.G = G
 
         self.PAD = 0
         self.METAROOT = 1
         self.base_case_nodes = torch.tensor([self.PAD, self.METAROOT])
 
+        if self.weight_strategy == "number_of_descendants":
+            # TODO this is a very inefficient way to collect this info, do it in a single traversal
+            node_to_weight = {n - 1: len(nx.descendants(G, n)) for n in G.nodes if n != 0}
+        else:
+            # calculate node depths (used as weights); METAROOT has index 0 in G
+            # root nodes are at depth 1, successive levels at depths 2, 3, 4...
+            node_to_weight = {n - 1: len(p) - 1 for n, p in nx.shortest_path(G, 0).items() if n != 0}
+
+        node_to_weight = torch.FloatTensor([node_to_weight[k] for k in sorted(list(node_to_weight.keys()))]).unsqueeze(-1)
+        node_to_weight = torch.cat([node_to_weight, torch.tensor([[0]])], dim=0)
+        self.EMB_PAD = node_to_weight.shape[0] - 1
+        self.weights = torch.nn.Embedding.from_pretrained(node_to_weight, freeze=True, padding_idx=self.EMB_PAD)
+
         self.negative_roots = self.precompute_negatives()
+
+    def __call__(self, positive_edges: Optional[LongTensor]) -> LongTensor:
+        """
+        Return negative edges for each positive edge.
+
+        :param positive_edges: Positive edges, a LongTensor of indices with shape (..., 2), where [...,0] is the head
+            node index and [...,1] is the tail node index.
+        :return: negative edges, a LongTensor of indices with shape (..., negative_ratio, 2)
+        """
+
+        tails = positive_edges[..., 1]
+        negative_candidates = self.negative_roots[tails].long()
+        negative_candidates_weights = self.weights(negative_candidates).squeeze()
         breakpoint()
 
     def precompute_negatives(self):
@@ -445,8 +471,7 @@ class HierarchicalNegativeEdgesBatched:
 
         negative_roots = self._get_negative_roots(nodes=nodes, negative_roots=torch.zeros((nodes.shape[0], 1)))
         negative_roots = _batch_prune_and_sort(negative_roots, pad=self.PAD) - 2    # shift back pad and meta-root
-        self.PAD = -1
-        negative_roots[negative_roots < 0] = self.PAD
+        negative_roots[negative_roots < 0] = self.EMB_PAD    # prepare for weights lookup
 
         return negative_roots
 
@@ -585,7 +610,7 @@ def _batch_prune_and_sort(nodes, pad=0):
     """
 
     pruned_sorted_rows = [torch.tensor(sorted(list(set(r.tolist()) - {pad}))) for r in nodes]
-    pruned_sorted_rows = [r if len(r) > 0 else torch.tensor([0]) for r in pruned_sorted_rows]
+    pruned_sorted_rows = [r if len(r) > 0 else torch.tensor([pad]) for r in pruned_sorted_rows]
     packed = pack_sequence(pruned_sorted_rows, enforce_sorted=False)
     padded, _ = pad_packed_sequence(sequence=packed, batch_first=True, padding_value=pad)
     return padded
@@ -599,9 +624,9 @@ class HierarchicalNegativeEdgesDebug:
     def __attrs_post_init__(self):
 
         # create graph with meta-root node
-        self.nx_graph = nx.DiGraph(self.edges.tolist())
-        self.root_nodes = [node for node, degree in self.nx_graph.in_degree if degree == 0]
-        self.nx_graph.add_edges_from([("M", "M")] + [("M", r) for r in self.root_nodes])
+        self.G = nx.DiGraph(self.edges.tolist())
+        self.root_nodes = [node for node, degree in self.G.in_degree if degree == 0]
+        self.G.add_edges_from([("M", "M")] + [("M", r) for r in self.root_nodes])
 
         self.precompute_negatives()
 
@@ -613,7 +638,7 @@ class HierarchicalNegativeEdgesDebug:
 
         node_to_uncles = dict()
         uncles_per_node = list()
-        for node in self.nx_graph.nodes:
+        for node in self.G.nodes:
             if node != "M":
                 uncles = self._get_uncles_for_nodes_recursive(nodes={node}, uncles=set())
                 node_to_uncles[node] = uncles
@@ -643,7 +668,7 @@ class HierarchicalNegativeEdgesDebug:
 
         parents = set()
         for node in nodes:
-            parents.update(self.nx_graph.predecessors(node))
+            parents.update(self.G.predecessors(node))
 
         return parents
 
@@ -651,7 +676,7 @@ class HierarchicalNegativeEdgesDebug:
 
         children = set()
         for node in nodes:
-            children.update({c for c in self.nx_graph[node].keys()})
+            children.update({c for c in self.G[node].keys()})
 
         return children
 
@@ -660,7 +685,7 @@ class HierarchicalNegativeEdgesDebug:
         descendants = set()
         for node in nodes:
             if node != "M":
-                descendants.update(nx.descendants(self.nx_graph, node))
+                descendants.update(nx.descendants(self.G, node))
 
         return descendants
 
