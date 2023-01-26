@@ -14,3 +14,6 @@ def main():
 main.add_command(generate, "generate")
 main.add_command(train, "train")
 main.add_command(eval, "eval")
+
+if __name__ == "__main__":
+    main()
