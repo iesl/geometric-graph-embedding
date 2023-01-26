@@ -18,6 +18,10 @@ from pytorch_utils.training import IntervalConditional
 
 from box_training_methods.metrics import *
 
+# visualization imports only
+from box_training_methods.visualization.plot_2d_tbox import plot_2d_tbox
+from box_training_methods.models.box import TBox
+
 
 __all__ = [
     "GraphModelingTrainLooper",
@@ -61,10 +65,15 @@ class GraphModelingTrainLooper:
     def loop(self, epochs: int):
         try:
             self.running_losses = []
+            box_collection = []
             for epoch in trange(epochs, desc=f"[{self.name}] Epochs"):
                 self.model.train()
                 with torch.enable_grad():
                     self.train_loop(epoch)
+                    if isinstance(self.model, TBox):
+                        box_collection.append(torch.clone(self.model.boxes.detach()))
+            if isinstance(self.model, TBox):
+                plot_2d_tbox(box_collection=torch.stack(box_collection))
         except StopLoopingException as e:
             logger.warning(str(e))
         finally:
