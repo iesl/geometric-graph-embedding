@@ -465,9 +465,10 @@ class HierarchicalNegativeEdgesBatched:
         tails = positive_edges[..., 1]
         negative_candidates = self.negative_roots[tails].long()
         negative_candidates_weights = self.weights(negative_candidates).squeeze()
-        negative_nodes = torch.tensor(list(WeightedRandomSampler(weights=negative_candidates_weights,
-                                                                 num_samples=self.negative_ratio,
-                                                                 replacement=True)))
+        negative_idxs = torch.tensor(list(WeightedRandomSampler(weights=negative_candidates_weights,
+                                                                num_samples=self.negative_ratio,
+                                                                replacement=True)))
+        negative_nodes = torch.gather(negative_candidates, -1, negative_idxs)
         tails = tails.unsqueeze(-1).expand(-1, self.negative_ratio)
         negative_edges = torch.stack([negative_nodes, tails], dim=-1)
         return negative_edges
