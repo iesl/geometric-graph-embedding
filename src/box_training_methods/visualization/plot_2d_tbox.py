@@ -27,7 +27,7 @@ def plot_2d_tbox(box_collection):
     filenames = []
     for e in range(mins.shape[0]):     # iterate over epochs
 
-        rectangles = []
+        rectangles = dict()
         for i in range(mins.shape[1]):      # iterate over boxes in model
 
             xy = (mins[e, i, 0].item(), mins[e, i, 1].item())
@@ -47,10 +47,20 @@ def plot_2d_tbox(box_collection):
                                   facecolor="b",
                                   zorder=100,
                                   alpha=0.2)
-            rectangles.append(rectangle)
+            rectangles[i] = rectangle
 
         fig, ax = plt.subplots()
-        ax.add_collection(PatchCollection(rectangles, match_original=True))
+        ax.add_collection(PatchCollection(list(rectangles.values()), match_original=True))
+
+        # annotate with node id
+        for r in rectangles:
+            ax.add_artist(rectangles[r])
+            rx, ry = rectangles[r].get_xy()
+            cx = rx + rectangles[r].get_width() / 2.0
+            cy = ry + rectangles[r].get_height() / 2.0
+            ax.annotate(r, (cx, cy), color='k', weight='bold',
+                        fontsize=6, ha='center', va='center')
+
         plt.xlim([global_min[0].item(), global_max[0].item()])
         plt.ylim([global_min[1].item(), global_max[1].item()])
         plt.title(f"Boxes at epoch {e}")
