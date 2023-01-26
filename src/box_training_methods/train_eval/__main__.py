@@ -28,11 +28,19 @@ class IntOrPercent(click.ParamType):
             self.fail(f"{value!r} is not a valid integer or float", param, ctx)
 
 
+# TODO weed out the task-specific arguments from here and move them to task-specific train_eval methods
+
 @click.command(context_settings=dict(show_default=True),)
+@click.option(
+    "--task",
+    type=click.Choice(["graph_modeling", "multilabel_classification"], case_sensitive=False),
+    help="task to train on",
+    required=True
+)
 @click.option(
     "--data_path",
     type=click.Path(),
-    help="directory or file with graph data (eg. data/graph/some_tree)",
+    help="directory or file with data (eg. data/graph/some_tree)",
     required=True,
 )
 @click.option(
@@ -96,6 +104,12 @@ class IntOrPercent(click.ParamType):
     type=float,
     default=1.0,
     help="margin for MaxMarginWithLogitsNegativeSamplingLoss or BCEWithDistancesNegativeSamplingLoss (unused otherwise)",
+)
+@click.option(
+    "--negative_sampler",
+    type=str,
+    default="random",
+    help="whether to use RandomNegativeEdges or HierarchicalNegativeEdgesBatched"
 )
 @click.option(
     "--negative_ratio",
@@ -210,7 +224,13 @@ class IntOrPercent(click.ParamType):
     help="whether or not to save the model to disk",
 )
 def train(**config):
-    """Train a graph embedding representation"""
+    """Train an embedding representation on a task with boxes"""
     from .train import training
 
     training(config)
+
+
+@click.command(context_settings=dict(show_default=True),)
+def eval():
+    """Evaluate an embedding representation on a task with boxes"""
+    pass

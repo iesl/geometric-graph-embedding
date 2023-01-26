@@ -12,3 +12,6 @@ loguru~=0.5.3
 hypothesis~=6.27.1
 pytest~=6.2.5
 click~=8.0.3
+wcmatch~=8.3
+scikit-multilearn
+liac-arff
