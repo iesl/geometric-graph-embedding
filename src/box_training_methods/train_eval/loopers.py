@@ -18,9 +18,15 @@ from pytorch_utils.training import IntervalConditional
 
 from box_training_methods.metrics import *
 
-# visualization imports only
+### VISUALIZATION IMPORTS ONLY
 from box_training_methods.visualization.plot_2d_tbox import plot_2d_tbox
 from box_training_methods.models.box import TBox
+from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, HierarchicalNegativeEdgesBatched
+neg_sampler_obj_to_str = {
+    RandomNegativeEdges: "random",
+    HierarchicalNegativeEdgesBatched: "hierarchical"
+}
+###
 
 
 __all__ = [
@@ -73,7 +79,9 @@ class GraphModelingTrainLooper:
                     if isinstance(self.model, TBox):
                         box_collection.append(torch.clone(self.model.boxes.detach()))
             if isinstance(self.model, TBox):
-                plot_2d_tbox(box_collection=torch.stack(box_collection))
+                plot_2d_tbox(box_collection=torch.stack(box_collection),
+                             negative_sampler=neg_sampler_obj_to_str[type(self.dl.dataset.negative_sampler)],
+                             lr=self.opt.param_groups[0]['lr'])
         except StopLoopingException as e:
             logger.warning(str(e))
         finally:

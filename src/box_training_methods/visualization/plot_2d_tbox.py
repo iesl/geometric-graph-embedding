@@ -7,7 +7,7 @@ from PIL import Image
 
 import time
 
-def plot_2d_tbox(box_collection):
+def plot_2d_tbox(box_collection, negative_sampler, lr):
     """
 
     Args:
@@ -24,8 +24,10 @@ def plot_2d_tbox(box_collection):
     global_min, _ = mins.view(mins.shape[0] * mins.shape[1], 2).min(axis=0)
     global_max, _ = maxs.view(maxs.shape[0] * maxs.shape[1], 2).max(axis=0)
 
+    epochs = mins.shape[0]
+
     filenames = []
-    for e in range(mins.shape[0]):     # iterate over epochs
+    for e in range(epochs):     # iterate over epochs
 
         rectangles = dict()
         for i in range(mins.shape[1]):      # iterate over boxes in model
@@ -73,5 +75,6 @@ def plot_2d_tbox(box_collection):
 
     frames = [Image.open(fn) for fn in filenames]
     frame_one = frames[0]
-    frame_one.save("/Users/brozonoyer/Desktop/IESL/box-training-methods/gifs/boxes_random.200.gif",
-                   format="GIF", append_images=frames, save_all=True, duration=100, loop=0)
+    frame_one.save(f"/Users/brozonoyer/Desktop/IESL/box-training-methods/gifs/tbox.{negative_sampler}."
+                   f"{str(lr)}_lr.{str(epochs)}_epochs.gif",
+                   format="GIF", append_images=frames, save_all=True, duration=150, loop=0)
