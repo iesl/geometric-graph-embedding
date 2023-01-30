@@ -7,7 +7,7 @@ from PIL import Image
 
 import time
 
-def plot_2d_tbox(box_collection, negative_sampler, lr):
+def plot_2d_tbox(box_collection, negative_sampler, lr, negative_sampling_strategy=None):
     """
 
     Args:
@@ -75,6 +75,6 @@ def plot_2d_tbox(box_collection, negative_sampler, lr):
 
     frames = [Image.open(fn) for fn in filenames]
     frame_one = frames[0]
-    frame_one.save(f"/Users/brozonoyer/Desktop/IESL/box-training-methods/gifs/tbox.{negative_sampler}."
-                   f"{str(lr)}_lr.{str(epochs)}_epochs.gif",
+    negative_sampling_strategy_str = f".strategy_{negative_sampling_strategy}" if negative_sampling_strategy else ""
+    frame_one.save(f"/Users/brozonoyer/Desktop/IESL/box-training-methods/gifs/tbox.{negative_sampler}{negative_sampling_strategy_str}.{str(lr)}_lr.{str(epochs)}_epochs.gif",
                    format="GIF", append_images=frames, save_all=True, duration=150, loop=0)
