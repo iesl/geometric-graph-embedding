@@ -44,6 +44,7 @@ class GraphModelingTrainLooper:
     dl: DataLoader
     opt: torch.optim.Optimizer
     loss_func: Callable
+    exact_negative_sampling: bool = True
     scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None
     eval_loopers: Iterable[EvalLooper] = attr.ib(factory=tuple)
     early_stopping: Callable = lambda z: None
@@ -81,7 +82,8 @@ class GraphModelingTrainLooper:
             if isinstance(self.model, TBox):
                 plot_2d_tbox(box_collection=torch.stack(box_collection),
                              negative_sampler=neg_sampler_obj_to_str[type(self.dl.dataset.negative_sampler)],
-                             lr=self.opt.param_groups[0]['lr'])
+                             lr=self.opt.param_groups[0]['lr'],
+                             negative_sampling_strategy=self.dl.dataset.negative_sampler.weight_strategy if isinstance(self.dl.dataset.negative_sampler, HierarchicalNegativeEdgesBatched) else None)
         except StopLoopingException as e:
             logger.warning(str(e))
         finally:
@@ -115,8 +117,13 @@ class GraphModelingTrainLooper:
         ):
             self.opt.zero_grad()
 
+            negative_padding_mask = None
+            if self.exact_negative_sampling:
+                batch_in, negative_padding_mask = torch.split(batch_in, (batch_in.shape[1] // 2) + 1, dim=1)
+                negative_padding_mask = negative_padding_mask[..., 0].float()   # deduplicate
+
             batch_out = self.model(batch_in)
-            loss = self.loss_func(batch_out)
+            loss = self.loss_func(batch_out, negative_padding_mask=negative_padding_mask)
 
             # This is not always going to be the right thing to check.
             # In a more general setting, we might want to consider wrapping the DataLoader in some way

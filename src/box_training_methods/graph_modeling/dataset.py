@@ -396,7 +396,7 @@ class RandomNegativeEdges:
 class HierarchicalNegativeEdgesBatched:
 
     edges: Tensor = attr.ib(validator=_validate_edge_tensor)
-    weight_strategy: str = "number_of_descendants"  # or "depth"
+    weight_strategy: str = "exact"  # "number_of_descendants", "depth"
     negative_ratio: int = 16
 
     def __attrs_post_init__(self):
@@ -464,6 +464,22 @@ class HierarchicalNegativeEdgesBatched:
 
         tails = positive_edges[..., 1]
         negative_candidates = self.negative_roots[tails].long()
+
+        # Implement a policy that returns all negative candidates w/o repetition.
+        # This will require a mask to be used inside TBox forward method.
+        if self.weight_strategy == "exact":
+            tails = tails.unsqueeze(-1).expand(-1, negative_candidates.shape[-1])
+            negative_edges = torch.stack([negative_candidates, tails], dim=-1)
+            padding_mask = (negative_candidates != self.EMB_PAD).long().unsqueeze(-1).expand(-1, -1, 2)
+
+            # pad with something that can index model.boxes (we already have mask for it so doesn't matter what
+            # it is so long as it doesn't cause IndexError)
+            negative_edges[negative_edges == self.EMB_PAD] = 0
+
+            # return padding mask concatenated to negative_edges,
+            # hardcode TBox to interpret negative edges correctly
+            return torch.cat([negative_edges, padding_mask], dim=1)
+
         negative_candidates_weights = self.weights(negative_candidates).squeeze()
         negative_idxs = torch.tensor(list(WeightedRandomSampler(weights=negative_candidates_weights,
                                                                 num_samples=self.negative_ratio,

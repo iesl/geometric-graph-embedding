@@ -3,6 +3,7 @@ from torch import Tensor
 from torch.nn import Module
 from torch.nn import functional as F
 
+from typing import *
 from box_embeddings.common.utils import log1mexp
 
 __all__ = [
@@ -31,7 +32,7 @@ class BCEWithLogsNegativeSamplingLoss(Module):
         super().__init__()
         self.negative_weight = negative_weight
 
-    def forward(self, log_prob_scores: Tensor) -> Tensor:
+    def forward(self, log_prob_scores: Tensor, negative_padding_mask: Union[None, Tensor] = None) -> Tensor:
         """
         Returns a weighted BCE loss where:
             (1 - negative_weight) * pos_loss + negative_weight * weighted_average(neg_loss)
@@ -44,8 +45,14 @@ class BCEWithLogsNegativeSamplingLoss(Module):
         pos_loss = -log_prob_pos
         neg_loss = -log1mexp(log_prob_neg)
         logit_prob_neg = log_prob_neg + neg_loss
+
+        # mask out padding negative edges before applying softmax
+        if negative_padding_mask is not None:
+            logit_prob_neg = logit_prob_neg * negative_padding_mask
+            logit_prob_neg[logit_prob_neg == 0] = -torch.inf                # for masked softmax
+
         weights = F.softmax(logit_prob_neg, dim=-1)
-        weighted_average_neg_loss = (weights * neg_loss).sum(dim=-1)
+        weighted_average_neg_loss = (weights * neg_loss * negative_padding_mask).sum(dim=-1)
         return (
             1 - self.negative_weight
         ) * pos_loss + self.negative_weight * weighted_average_neg_loss
