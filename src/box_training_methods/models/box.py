@@ -8,7 +8,8 @@ from torch.nn import functional as F
 from wandb_utils.loggers import WandBLogger
 
 from .temps import convert_float_to_const_temp
-from .. import metric_logger
+from box_training_methods.utils import tiny_value_of_dtype
+from box_training_methods import metric_logger
 
 __all__ = [
     "BoxMinDeltaSoftplus",
@@ -16,6 +17,10 @@ __all__ = [
 ]
 
 
+eps = tiny_value_of_dtype(torch.float)
+
+
+# TODO rename to BoxCenterDeltaSoftplus
 class BoxMinDeltaSoftplus(Module):
     def __init__(self, num_entity, dim, volume_temp=1.0, intersection_temp=1.0):
         super().__init__()
@@ -127,6 +132,7 @@ class TBox(Module):
         dim: int,
         intersection_temp: Union[Module, float] = 0.01,
         volume_temp: Union[Module, float] = 1.0,
+        hard_box: bool = False,
     ):
         super().__init__()
         self.boxes = Parameter(
@@ -135,6 +141,7 @@ class TBox(Module):
         )
         self.intersection_temp = convert_float_to_const_temp(intersection_temp)
         self.volume_temp = convert_float_to_const_temp(volume_temp)
+        self.hard_box = hard_box
 
     def forward(
         self, idxs: LongTensor
@@ -145,6 +152,10 @@ class TBox(Module):
         :returns: FloatTensor representing the energy of the edges in `idxs`
         """
         boxes = self.boxes[idxs]  # shape (..., 2, 2 (min/-max), dim)
+
+        if self.hard_box and self.training:
+            return boxes
+
         intersection_temp = self.intersection_temp(idxs).mean(dim=-3, keepdim=True)
         volume_temp = self.volume_temp(idxs).mean(dim=-3, keepdim=False)
 

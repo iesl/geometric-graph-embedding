@@ -3,6 +3,7 @@ from torch import Tensor
 from torch.nn import Module
 from torch.nn import functional as F
 
+from typing import *
 from box_embeddings.common.utils import log1mexp
 
 __all__ = [
@@ -13,6 +14,7 @@ __all__ = [
     "MaxMarginWithLogitsNegativeSamplingLoss",
     "MaxMarginOENegativeSamplingLoss",
     "MaxMarginDiskEmbeddingNegativeSamplingLoss",
+    "PushApartPullTogetherLoss",
 ]
 
 
@@ -30,7 +32,7 @@ class BCEWithLogsNegativeSamplingLoss(Module):
         super().__init__()
         self.negative_weight = negative_weight
 
-    def forward(self, log_prob_scores: Tensor) -> Tensor:
+    def forward(self, log_prob_scores: Tensor, negative_padding_mask: Union[None, Tensor] = None) -> Tensor:
         """
         Returns a weighted BCE loss where:
             (1 - negative_weight) * pos_loss + negative_weight * weighted_average(neg_loss)
@@ -43,6 +45,12 @@ class BCEWithLogsNegativeSamplingLoss(Module):
         pos_loss = -log_prob_pos
         neg_loss = -log1mexp(log_prob_neg)
         logit_prob_neg = log_prob_neg + neg_loss
+
+        # mask out padding negative edges before applying softmax
+        if negative_padding_mask is not None:
+            logit_prob_neg = logit_prob_neg * negative_padding_mask
+            logit_prob_neg[logit_prob_neg == 0] = -torch.inf                # for masked softmax
+
         weights = F.softmax(logit_prob_neg, dim=-1)
         weighted_average_neg_loss = (weights * neg_loss).sum(dim=-1)
         return (
@@ -188,4 +196,62 @@ class MaxMarginDiskEmbeddingNegativeSamplingLoss(Module):
         loss = (1 - self.negative_weight) * (-pos_scores).clamp_min(0).mean(
             dim=-1
         ) + self.negative_weight * (self.margin + neg_scores).clamp_min(0).mean(dim=-1)
+        return loss
+
+
+class PushApartPullTogetherLoss(Module):
+
+    def __init__(self, negative_weight: float = 0.5):
+        super().__init__()
+        self.negative_weight = negative_weight
+
+        self.margin = torch.nn.Parameter(torch.tensor(5.))              # Δ
+        self.stiffness = torch.nn.Parameter(torch.tensor(5.))           # ψ
+        self.nonlinearity = F.sigmoid                                   # σ
+
+    def forward(self, inputs: Tensor, *args, **kwargs) -> Tensor:
+        """
+        :param inputs: Tensor of shape (bsz, 1+K, 2 (x < y or x !< y), 2 (z/-Z), dim) representing hard
+                      box embedding of two graph vertices, where [:, 0, ...] are the embeddings for the
+                      positive example and [:, 1:, ...] are embeddings for negatives.
+        """
+
+        # convert min/-max representation into u/v (i.e. min/delta) representation
+        # inputs: (bsz, 1+K, 2 (y > x or y !> x), 2 (u/v), dim)
+        inputs = torch.cat([inputs[..., [0], :], -inputs.sum(dim=-2, keepdim=True)], dim=-2)
+
+        u_x_pos = inputs[:, [0], [0], [0], :]
+        v_x_pos = inputs[:, [0], [0], [1], :]
+        u_y_pos = inputs[:, [0], [1], [0], :]
+        v_y_pos = inputs[:, [0], [1], [1], :]
+
+        # positive examples x < y: "pull together loss"
+        loss_pos = \
+            torch.max(
+                torch.max(
+                    torch.cat([F.relu(u_y_pos + self.margin - u_x_pos),
+                               F.relu(u_x_pos + v_x_pos + self.margin - u_y_pos - v_y_pos)], dim=-2),
+                    dim=-2, keepdim=True).values,
+                dim=-1, keepdim=True).values
+        loss_pos = torch.squeeze(self.nonlinearity(self.stiffness * loss_pos))
+
+        u_x_neg = inputs[:, 1:, [0], [0], :]
+        v_x_neg = inputs[:, 1:, [0], [1], :]
+        u_y_neg = inputs[:, 1:, [1], [0], :]
+        v_y_neg = inputs[:, 1:, [1], [1], :]
+
+        # negative examples x !< y: "push apart loss"
+        # We incur penalty for only the smallest violation because even the minimal non-containment is
+        #   good enough to say that "x is not a child of y" (for a negative example).
+        loss_neg = \
+            torch.min(
+                torch.min(
+                    torch.cat([F.relu(u_x_neg + self.margin - u_y_neg),
+                               F.relu(u_y_neg + v_y_neg + self.margin - u_x_neg - v_x_neg)], dim=-2),
+                    dim=-2, keepdim=True).values,
+                dim=-1, keepdim=True).values
+        loss_neg = torch.squeeze(self.nonlinearity(self.stiffness * loss_neg))
+        loss_neg = loss_neg.sum(dim=-1)
+
+        loss = loss_pos + self.negative_weight * loss_neg
         return loss

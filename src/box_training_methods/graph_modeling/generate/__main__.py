@@ -8,7 +8,7 @@ from . import write_graph
 
 @click.group()
 def main():
-    """Graph generation commands"""
+    """Graph generation commands for graph modeling task"""
     pass
 
 
@@ -38,6 +38,13 @@ def _common_options(func):
         return func(*args, seed=seed, **kwargs)
 
     return wrapper
+
+
+@_common_options
+@click.option("--which", default="balanced-tree", help="balanced-tree or dag")
+def hierarchical_negative_sampling_debugging_graphs(outdir, **graph_config):
+    """Writes out one of two mini graphs for debugging hierarchical negative sampling"""
+    write_graph(outdir, type="hierarchical_negative_sampling_debugging_graphs", **graph_config)
 
 
 @_common_options

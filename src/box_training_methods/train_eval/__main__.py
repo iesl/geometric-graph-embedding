@@ -28,11 +28,19 @@ class IntOrPercent(click.ParamType):
             self.fail(f"{value!r} is not a valid integer or float", param, ctx)
 
 
+# TODO weed out the task-specific arguments from here and move them to task-specific train_eval methods
+
 @click.command(context_settings=dict(show_default=True),)
+@click.option(
+    "--task",
+    type=click.Choice(["graph_modeling", "multilabel_classification"], case_sensitive=False),
+    help="task to train on",
+    required=True
+)
 @click.option(
     "--data_path",
     type=click.Path(),
-    help="directory or file with graph data (eg. data/graph/some_tree)",
+    help="directory or file with data (eg. data/graph/some_tree)",
     required=True,
 )
 @click.option(
@@ -41,6 +49,7 @@ class IntOrPercent(click.ParamType):
         [
             "tbox",
             "gumbel_box",
+            "hard_box",
             "order_embeddings",
             "partial_order_embeddings",
             "vector_sim",
@@ -95,6 +104,18 @@ class IntOrPercent(click.ParamType):
     type=float,
     default=1.0,
     help="margin for MaxMarginWithLogitsNegativeSamplingLoss or BCEWithDistancesNegativeSamplingLoss (unused otherwise)",
+)
+@click.option(
+    "--negative_sampler",
+    type=str,
+    default="random",
+    help="whether to use RandomNegativeEdges or HierarchicalNegativeEdgesBatched"
+)
+@click.option(
+    "--hierarchical_negative_sampling_strategy",
+    type=str,
+    default="exact",
+    help="which negative edges to sample and with what probability to sample them"
 )
 @click.option(
     "--negative_ratio",
@@ -173,6 +194,12 @@ class IntOrPercent(click.ParamType):
     help="restrict vectors to be parameterized in an annulus from eps to 1-eps",
 )
 @click.option(
+    "--constrain_deltas_fn",
+    type=click.Choice(["sqr", "exp", "softplus", "proj"]),
+    default="sqr",
+    help="which function to apply to width parameters of hard_box in order to make them positive, or use projected gradient descent (clipping in forward method)"
+)
+@click.option(
     "--box_intersection_temp",
     type=float,
     default=0.01,
@@ -203,7 +230,13 @@ class IntOrPercent(click.ParamType):
     help="whether or not to save the model to disk",
 )
 def train(**config):
-    """Train a graph embedding representation"""
+    """Train an embedding representation on a task with boxes"""
     from .train import training
 
     training(config)
+
+
+@click.command(context_settings=dict(show_default=True),)
+def eval():
+    """Evaluate an embedding representation on a task with boxes"""
+    pass
