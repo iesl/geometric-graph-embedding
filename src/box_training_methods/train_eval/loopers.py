@@ -44,7 +44,7 @@ class GraphModelingTrainLooper:
     dl: DataLoader
     opt: torch.optim.Optimizer
     loss_func: Callable
-    exact_negative_sampling: bool = True
+    exact_negative_sampling: bool = False
     scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None
     eval_loopers: Iterable[EvalLooper] = attr.ib(factory=tuple)
     early_stopping: Callable = lambda z: None
@@ -83,7 +83,7 @@ class GraphModelingTrainLooper:
                 plot_2d_tbox(box_collection=torch.stack(box_collection),
                              negative_sampler=neg_sampler_obj_to_str[type(self.dl.dataset.negative_sampler)],
                              lr=self.opt.param_groups[0]['lr'],
-                             negative_sampling_strategy=self.dl.dataset.negative_sampler.weight_strategy if isinstance(self.dl.dataset.negative_sampler, HierarchicalNegativeEdgesBatched) else None)
+                             negative_sampling_strategy=self.dl.dataset.negative_sampler.sampling_strategy if isinstance(self.dl.dataset.negative_sampler, HierarchicalNegativeEdgesBatched) else None)
         except StopLoopingException as e:
             logger.warning(str(e))
         finally:

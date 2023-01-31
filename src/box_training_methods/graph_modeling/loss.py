@@ -52,7 +52,7 @@ class BCEWithLogsNegativeSamplingLoss(Module):
             logit_prob_neg[logit_prob_neg == 0] = -torch.inf                # for masked softmax
 
         weights = F.softmax(logit_prob_neg, dim=-1)
-        weighted_average_neg_loss = (weights * neg_loss * negative_padding_mask).sum(dim=-1)
+        weighted_average_neg_loss = (weights * neg_loss).sum(dim=-1)
         return (
             1 - self.negative_weight
         ) * pos_loss + self.negative_weight * weighted_average_neg_loss
