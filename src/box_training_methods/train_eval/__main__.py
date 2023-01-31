@@ -112,6 +112,12 @@ class IntOrPercent(click.ParamType):
     help="whether to use RandomNegativeEdges or HierarchicalNegativeEdgesBatched"
 )
 @click.option(
+    "--hierarchical_negative_sampling_strategy",
+    type=str,
+    default="exact",
+    help="which negative edges to sample and with what probability to sample them"
+)
+@click.option(
     "--negative_ratio",
     type=int,
     default=128,

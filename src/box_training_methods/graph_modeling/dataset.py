@@ -396,7 +396,7 @@ class RandomNegativeEdges:
 class HierarchicalNegativeEdgesBatched:
 
     edges: Tensor = attr.ib(validator=_validate_edge_tensor)
-    weight_strategy: str = "number_of_descendants"  # or "depth"
+    sampling_strategy: str = "number_of_descendants"  # "number_of_descendants", "depth"
     negative_ratio: int = 16
 
     def __attrs_post_init__(self):
@@ -437,10 +437,11 @@ class HierarchicalNegativeEdgesBatched:
         self.METAROOT = 1
         self.base_case_nodes = torch.tensor([self.PAD, self.METAROOT])
 
-        if self.weight_strategy == "number_of_descendants":
+        if self.sampling_strategy == "number_of_descendants":
             # TODO this is a very inefficient way to collect this info, do it in a single traversal
             # add 1 to # descendants because otherwise leaf nodes will have 0 weight
             node_to_weight = {n - 1: len(nx.descendants(G, n)) + 1 for n in G.nodes if n != 0}
+            # node_to_weight = {n - 1: 1 for n in G.nodes if n != 0}
         else:
             # calculate node depths (used as weights); METAROOT has index 0 in G
             # root nodes are at depth 1, successive levels at depths 2, 3, 4...
@@ -464,11 +465,31 @@ class HierarchicalNegativeEdgesBatched:
 
         tails = positive_edges[..., 1]
         negative_candidates = self.negative_roots[tails].long()
+
+        # Implement a policy that returns all negative candidates w/o repetition.
+        # This will require a mask to be used inside TBox forward method.
+        if self.sampling_strategy == "exact":
+            tails = tails.unsqueeze(-1).expand(-1, negative_candidates.shape[-1])
+            negative_edges = torch.stack([negative_candidates, tails], dim=-1)
+            padding_mask = (negative_candidates != self.EMB_PAD).long().unsqueeze(-1).expand(-1, -1, 2)
+
+            # pad with something that can index model.boxes (we already have mask for it so doesn't matter what
+            # it is so long as it doesn't cause IndexError)
+            negative_edges[negative_edges == self.EMB_PAD] = 0
+
+            # return padding mask concatenated to negative_edges,
+            # hardcode TBox to interpret negative edges correctly
+            return torch.cat([negative_edges, padding_mask], dim=1)
+
         negative_candidates_weights = self.weights(negative_candidates).squeeze()
         negative_idxs = torch.tensor(list(WeightedRandomSampler(weights=negative_candidates_weights,
                                                                 num_samples=self.negative_ratio,
                                                                 replacement=True)))
-        negative_nodes = torch.gather(negative_candidates, -1, negative_idxs)
+        try:
+            negative_nodes = torch.gather(negative_candidates, -1, negative_idxs)
+        except RuntimeError:
+            # FIXME this happens when we have a leftover batch of one instance
+            negative_nodes = torch.gather(negative_candidates, -1, negative_idxs.unsqueeze(dim=0))
         tails = tails.unsqueeze(-1).expand(-1, self.negative_ratio)
         negative_edges = torch.stack([negative_nodes, tails], dim=-1)
         return negative_edges

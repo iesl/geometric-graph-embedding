@@ -104,6 +104,8 @@ def setup_model(
                 config["box_intersection_temp"],
                 0.0001,
                 100,
+                # 0.009,
+                # 0.011,
                 dim=config["dim"],
                 num_entities=num_nodes,
             ),
@@ -111,6 +113,8 @@ def setup_model(
                 config["box_volume_temp"],
                 0.01,
                 1000,
+                # 0.9,
+                # 1.1,
                 dim=config["dim"],
                 num_entities=num_nodes,
             ),
@@ -263,7 +267,8 @@ def setup_training_data(device: Union[str, torch.device], **config) -> GraphData
     elif config["negative_sampler"] == "hierarchical":
         negative_sampler = HierarchicalNegativeEdgesBatched(
             edges=training_edges,
-            negative_ratio=config["negative_ratio"]
+            negative_ratio=config["negative_ratio"],
+            sampling_strategy=config["hierarchical_negative_sampling_strategy"],
         )
     else:
         raise NotImplementedError
