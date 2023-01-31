@@ -71,7 +71,7 @@ def plot_2d_tbox(box_collection, negative_sampler, lr, negative_sampling_strateg
         plt.savefig(filename)
         plt.clf()
 
-    time.sleep(7)
+    time.sleep(3.5)
 
     frames = [Image.open(fn) for fn in filenames]
     frame_one = frames[0]
