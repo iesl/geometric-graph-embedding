@@ -58,8 +58,8 @@ def plot_2d_tbox(box_collection, negative_sampler, lr, negative_sampling_strateg
         for r in rectangles:
             ax.add_artist(rectangles[r])
             rx, ry = rectangles[r].get_xy()
-            cx = rx + rectangles[r].get_width() / 2.0
-            cy = ry + rectangles[r].get_height() / 2.0
+            cx = rx #+ rectangles[r].get_width() / 2.0
+            cy = ry #+ rectangles[r].get_height() / 2.0
             ax.annotate(r, (cx, cy), color='k', weight='bold',
                         fontsize=6, ha='center', va='center')
 

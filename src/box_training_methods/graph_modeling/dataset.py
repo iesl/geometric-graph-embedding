@@ -440,8 +440,8 @@ class HierarchicalNegativeEdgesBatched:
         if self.sampling_strategy == "number_of_descendants":
             # TODO this is a very inefficient way to collect this info, do it in a single traversal
             # add 1 to # descendants because otherwise leaf nodes will have 0 weight
-            # node_to_weight = {n - 1: len(nx.descendants(G, n)) + 1 for n in G.nodes if n != 0}
-            node_to_weight = {n - 1: 1 for n in G.nodes if n != 0}
+            node_to_weight = {n - 1: len(nx.descendants(G, n)) + 1 for n in G.nodes if n != 0}
+            # node_to_weight = {n - 1: 1 for n in G.nodes if n != 0}
         else:
             # calculate node depths (used as weights); METAROOT has index 0 in G
             # root nodes are at depth 1, successive levels at depths 2, 3, 4...
