@@ -201,6 +201,8 @@ def setup(**config):
             dl=train_dataloader,
             opt=opt,
             loss_func=loss_func,
+            exact_negative_sampling=True if (config["negative_sampler"] == "hierarchical" and
+                                             config["hierarchical_negative_sampling_strategy"] == "exact") else False,
             eval_loopers=eval_loopers,
             log_interval=config["log_interval"],
             early_stopping=EarlyStopping("Loss", config["patience"]),
