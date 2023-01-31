@@ -1,0 +1,36 @@
+program: scripts/box-training-methods
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - train
+  - ${args}
+  - --task graph_modeling
+  - --model_type=tbox
+  - --tbox_temperature_type global
+  - --box_intersection_temp 0.01
+  - --box_volume_temp 1.0
+  - --log_interval=0.2
+  - --log_batch_size=7
+  - --log_eval_batch_size=20
+  - --data_path=data/graphs13/balanced_tree/branching=3-log_num_nodes=13-transitive_closure=True
+  - --wandb
+method: bayes
+metric:
+  goal: maximize
+  name: '[Train] F1'
+parameters:
+  learning_rate:
+    distribution: log_uniform
+    min: -9.2
+    max: 0
+  dim:
+    values: [8, 32, 128]
+  negative_weight:
+    distribution: uniform
+    min: 0.5
+    max: 1.0
+  negative_ratio:
+    values: [128]
+  negative_sampler:
+    values: ['random', 'hierarchical']
