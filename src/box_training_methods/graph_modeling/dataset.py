@@ -500,7 +500,7 @@ class HierarchicalNegativeEdgesBatched:
         negative_roots = self._batch_get_negative_roots(nodes=nodes, negative_roots=torch.zeros((nodes.shape[0], 1)))
         negative_roots = _batch_prune_and_sort(negative_roots, pad=self.PAD) - 2    # shift back pad and meta-root
         negative_roots[negative_roots < 0] = self.EMB_PAD    # prepare for weights lookup
-        breakpoint()
+
         return negative_roots
 
     def _batch_get_negative_roots(self, nodes, negative_roots):
