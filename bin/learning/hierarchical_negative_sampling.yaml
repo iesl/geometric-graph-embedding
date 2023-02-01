@@ -14,7 +14,7 @@ command:
   - --log_interval=0.2
   - --log_batch_size=7
   - --log_eval_batch_size=20
-  - --data_path=data/graphs13/balanced_tree/branching=3-log_num_nodes=13-transitive_closure=True
+  - --data_path=data/graphs13/balanced_tree/branching=10-log_num_nodes=13-transitive_closure=False/
   - --wandb
 method: bayes
 metric:
@@ -34,4 +34,4 @@ parameters:
   negative_ratio:
     values: [128]
   negative_sampler:
-    values: ['random', 'hierarchical']
+    values: ['hierarchical']
