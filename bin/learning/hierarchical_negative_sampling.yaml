@@ -5,11 +5,11 @@ command:
   - ${program}
   - train
   - ${args}
-  - --task graph_modeling
+  - --task=graph_modeling
   - --model_type=tbox
-  - --tbox_temperature_type global
-  - --box_intersection_temp 0.01
-  - --box_volume_temp 1.0
+  - --tbox_temperature_type=global
+  - --box_intersection_temp=0.01
+  - --box_volume_temp=1.0
   - --log_interval=0.2
   - --log_batch_size=7
   - --log_eval_batch_size=20
