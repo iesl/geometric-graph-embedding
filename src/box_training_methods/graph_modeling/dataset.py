@@ -451,7 +451,7 @@ class HierarchicalNegativeEdgesBatched:
         self.EMB_PAD = node_to_weight.shape[0] - 1
         self.weights = torch.nn.Embedding.from_pretrained(node_to_weight, freeze=True, padding_idx=self.EMB_PAD)
 
-        self.negative_roots = self.precompute_negatives()
+        self.negative_roots = self.batch_precompute_negatives()
 
     def __call__(self, positive_edges: Optional[LongTensor]) -> LongTensor:
         """
@@ -493,17 +493,17 @@ class HierarchicalNegativeEdgesBatched:
         negative_edges = torch.stack([negative_nodes, tails], dim=-1)
         return negative_edges
 
-    def precompute_negatives(self):
+    def batch_precompute_negatives(self):
 
         nodes = torch.arange(2, self.A.shape[0]).unsqueeze(-1)   # exclude pad at index 0 and meta-root at index 1
 
-        negative_roots = self._get_negative_roots(nodes=nodes, negative_roots=torch.zeros((nodes.shape[0], 1)))
+        negative_roots = self._batch_get_negative_roots(nodes=nodes, negative_roots=torch.zeros((nodes.shape[0], 1)))
         negative_roots = _batch_prune_and_sort(negative_roots, pad=self.PAD) - 2    # shift back pad and meta-root
         negative_roots[negative_roots < 0] = self.EMB_PAD    # prepare for weights lookup
-
+        breakpoint()
         return negative_roots
 
-    def _get_negative_roots(self, nodes, negative_roots):
+    def _batch_get_negative_roots(self, nodes, negative_roots):
         """
 
         Args:
@@ -511,11 +511,8 @@ class HierarchicalNegativeEdgesBatched:
                     this level of recursion. Since different starting nodes in a DAG may have different number of parents
                     at a given level of recursion, we pad this dimension with -1 for every starting node dimension with
                     less than max_nodes at the current level of recursion.
-            uncles_per_level: dictionary mapping from each level of recursion (going up towards root) to tensor of
-                     (batch_size, max_negatives) storing all the roots for negative samples at each level.
-            level: parent of positive example is level 0, subtract 1 for each higher level.
 
-        Returns: uncles_per_level
+        Returns: negative_roots
 
         """
 
@@ -545,7 +542,7 @@ class HierarchicalNegativeEdgesBatched:
         negative_roots = _batch_set_union(b1=negative_roots, b2=negative_roots_at_current_level)
         negative_roots = _batch_set_difference(b1=negative_roots, b2=descendants_of_negative_roots_at_current_level)
 
-        return self._get_negative_roots(nodes=parents, negative_roots=negative_roots)
+        return self._batch_get_negative_roots(nodes=parents, negative_roots=negative_roots)
 
 
 def _batch_get_parents_or_children(nodes, adjacency_matrix, action="parents", pad=0, metaroot=1):
@@ -566,14 +563,20 @@ def _batch_get_parents_or_children(nodes, adjacency_matrix, action="parents", pa
         # replace METAROOT with PAD if getting parents, because otherwise pack_sequence will break on all-zero parents
         #  of METAROOT which will yield an empty sequence to pack. This won't affect the correctness of algorithm.
         nodes[nodes == metaroot] = pad
-        parents = adjacency_matrix.todense()[:, nodes]
-        parents, buckets, _ = parents.nonzero()
+        # parents = adjacency_matrix.todense()[:, nodes]
+        parents = torch.stack([torch.tensor(adjacency_matrix[:, n].todense()) for n in nodes]).transpose(0, 1)
+        nonzero = parents.nonzero()
+        parents, buckets = nonzero[:, 0], nonzero[:, 1]
+        # parents, buckets, _ = parents.nonzero()
     elif action == "children":
         # by "parents" here we mean "children" for lack of a general term that encapsulates "parents or children"
-        parents = adjacency_matrix.todense()[nodes]
-        buckets, _, parents = parents.nonzero()
+        # parents = adjacency_matrix.todense()[nodes]
+        parents = torch.stack([torch.tensor(adjacency_matrix[n].todense()) for n in nodes])
+        nonzero = parents.nonzero()
+        buckets, parents = nonzero[:, 0], nonzero[:, 2]
+        # buckets, _, parents = parents.nonzero()
 
-    parents, buckets = torch.tensor(parents), torch.tensor(buckets)
+    # parents, buckets = torch.tensor(parents), torch.tensor(buckets)
 
     ps_bs = torch.vstack([parents, buckets]).T
     sorted_ps_bs = ps_bs[torch.sort(ps_bs[:, -1])[1]]  # sort by bucket
