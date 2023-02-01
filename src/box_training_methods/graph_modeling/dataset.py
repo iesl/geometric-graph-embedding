@@ -400,6 +400,8 @@ class HierarchicalNegativeEdgesBatched:
 
     def __attrs_post_init__(self):
 
+        self._device = self.edges.device
+
         G = nx.DiGraph()
 
         # assume nodes are numbered contiguously 0 through #nodes, shift by one to add meta root as first node (for now)
@@ -543,6 +545,16 @@ class HierarchicalNegativeEdgesBatched:
         negative_roots = _batch_set_difference(b1=negative_roots, b2=descendants_of_negative_roots_at_current_level)
 
         return self._batch_get_negative_roots(nodes=parents, negative_roots=negative_roots)
+
+    @property
+    def device(self):
+        return self._device
+
+    def to(self, device: Union[str, torch.device]):
+        self._device = device
+        self.edges = self.edges.to(device)
+        self.negative_roots = self.negative_roots.to(device)
+        return self
 
 
 def _batch_get_parents_or_children(nodes, adjacency_matrix, action="parents", pad=0, metaroot=1):
