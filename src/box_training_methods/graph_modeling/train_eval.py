@@ -46,7 +46,6 @@ from .dataset import (
     edges_from_tsv,
     edges_and_num_nodes_from_npz,
     RandomNegativeEdges,
-    HierarchicalNegativeEdgesDebug,
     HierarchicalNegativeEdgesBatched,
     GraphDataset,
 )

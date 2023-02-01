@@ -28,7 +28,6 @@ __all__ = [
     "convert_ints_to_edges",
     "RandomEdges",
     "RandomNegativeEdges",
-    "HierarchicalNegativeEdgesDebug",
     "HierarchicalNegativeEdgesBatched",
     "GraphDataset",
 ]
@@ -643,80 +642,6 @@ def _batch_prune_and_sort(nodes, pad=0):
     packed = pack_sequence(pruned_sorted_rows, enforce_sorted=False)
     padded, _ = pad_packed_sequence(sequence=packed, batch_first=True, padding_value=pad)
     return padded
-
-
-@attr.s(auto_attribs=True)
-class HierarchicalNegativeEdgesDebug:
-
-    edges: Tensor = attr.ib(validator=_validate_edge_tensor)
-
-    def __attrs_post_init__(self):
-
-        # create graph with meta-root node
-        self.G = nx.DiGraph(self.edges.tolist())
-        self.root_nodes = [node for node, degree in self.G.in_degree if degree == 0]
-        self.G.add_edges_from([("M", "M")] + [("M", r) for r in self.root_nodes])
-
-        self.precompute_negatives()
-
-    def __call__(self, positive_edges: Optional[LongTensor]) -> LongTensor:
-
-        breakpoint()
-
-    def precompute_negatives(self):
-
-        node_to_uncles = dict()
-        uncles_per_node = list()
-        for node in self.G.nodes:
-            if node != "M":
-                uncles = self._get_uncles_for_nodes_recursive(nodes={node}, uncles=set())
-                node_to_uncles[node] = uncles
-                uncles_per_node.append(torch.tensor(uncles))
-
-        packed = pack_sequence(sequences=uncles_per_node, enforce_sorted=False)
-        padded, lens = pad_packed_sequence(sequence=packed, batch_first=True, padding_value=-1)
-
-        breakpoint()
-
-    def _get_uncles_for_nodes_recursive(self, nodes, uncles):
-
-        # base case: meta-root
-        if len(nodes) == 1 and list(nodes)[0] == "M":
-            return sorted(list(uncles))
-
-        parents = self._get_parents(nodes)
-        grandparents = self._get_parents(parents)
-        children_of_grandparents = self._get_children(grandparents)
-
-        uncles.update(children_of_grandparents - parents - nodes - {"M"})
-        uncles -= self._get_descendants(uncles)
-
-        return self._get_uncles_for_nodes_recursive(nodes=parents, uncles=uncles)
-
-    def _get_parents(self, nodes):
-
-        parents = set()
-        for node in nodes:
-            parents.update(self.G.predecessors(node))
-
-        return parents
-
-    def _get_children(self, nodes):
-
-        children = set()
-        for node in nodes:
-            children.update({c for c in self.G[node].keys()})
-
-        return children
-
-    def _get_descendants(self, nodes):
-
-        descendants = set()
-        for node in nodes:
-            if node != "M":
-                descendants.update(nx.descendants(self.G, node))
-
-        return descendants
 
 
 @attr.s(auto_attribs=True)
