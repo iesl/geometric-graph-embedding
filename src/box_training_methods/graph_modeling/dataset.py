@@ -465,7 +465,7 @@ class HierarchicalNegativeEdgesBatched:
         """
 
         tails = positive_edges[..., 1]
-        negative_candidates = self.negative_roots[tails].long()
+        negative_candidates = self.negative_roots[tails].long().to(positive_edges.device)
 
         # Implement a policy that returns all negative candidates w/o repetition.
         # This will require a mask to be used inside TBox forward method.
