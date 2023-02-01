@@ -6,6 +6,7 @@ command:
   - train
   - ${args}
   - --task=graph_modeling
+  - --seed=12345
   - --model_type=tbox
   - --tbox_temperature_type=global
   - --box_intersection_temp=0.01
