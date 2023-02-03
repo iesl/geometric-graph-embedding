@@ -505,8 +505,11 @@ class HierarchicalNegativeEdges:
         positives = node_and_ancestors.union(descendants_of_node)
         negatives = self.nodes.difference(positives)
 
+        # mask out the positives from TC-adjacency-matrix
         A__ = self.A_.copy()
         A__[torch.tensor(list(positives))] = 0
+
+        # remove the non-roots (i.e. non-zero column indices) from the negatives
         negative_roots = negatives.difference(set(A__.nonzero()[1]))
 
         return sorted(list(negative_roots))
