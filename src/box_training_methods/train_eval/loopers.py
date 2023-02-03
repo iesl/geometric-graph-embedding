@@ -21,10 +21,10 @@ from box_training_methods.metrics import *
 ### VISUALIZATION IMPORTS ONLY
 from box_training_methods.visualization.plot_2d_tbox import plot_2d_tbox
 from box_training_methods.models.box import TBox
-from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, HierarchicalNegativeEdgesBatched
+from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, HierarchicalNegativeEdges
 neg_sampler_obj_to_str = {
     RandomNegativeEdges: "random",
-    HierarchicalNegativeEdgesBatched: "hierarchical"
+    HierarchicalNegativeEdges: "hierarchical"
 }
 ###
 
@@ -83,7 +83,7 @@ class GraphModelingTrainLooper:
                 plot_2d_tbox(box_collection=torch.stack(box_collection),
                              negative_sampler=neg_sampler_obj_to_str[type(self.dl.dataset.negative_sampler)],
                              lr=self.opt.param_groups[0]['lr'],
-                             negative_sampling_strategy=self.dl.dataset.negative_sampler.sampling_strategy if isinstance(self.dl.dataset.negative_sampler, HierarchicalNegativeEdgesBatched) else None)
+                             negative_sampling_strategy=self.dl.dataset.negative_sampler.sampling_strategy if isinstance(self.dl.dataset.negative_sampler, HierarchicalNegativeEdges) else None)
         except StopLoopingException as e:
             logger.warning(str(e))
         finally:

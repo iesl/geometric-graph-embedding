@@ -46,7 +46,7 @@ from .dataset import (
     edges_from_tsv,
     edges_and_num_nodes_from_npz,
     RandomNegativeEdges,
-    HierarchicalNegativeEdgesBatched,
+    HierarchicalNegativeEdges,
     GraphDataset,
 )
 from .loss import (
@@ -264,7 +264,7 @@ def setup_training_data(device: Union[str, torch.device], **config) -> GraphData
             permutation_option=config["negatives_permutation_option"],
         )
     elif config["negative_sampler"] == "hierarchical":
-        negative_sampler = HierarchicalNegativeEdgesBatched(
+        negative_sampler = HierarchicalNegativeEdges(
             edges=training_edges,
             negative_ratio=config["negative_ratio"],
             sampling_strategy=config["hierarchical_negative_sampling_strategy"],
