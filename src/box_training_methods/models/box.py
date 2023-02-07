@@ -187,7 +187,7 @@ class TBox(Module):
                 "intersection_temp": self.intersection_temp(idxs).squeeze(-2),
                 "volume_temp": self.volume_temp(idxs).squeeze(-2),
                 "log_marginal_vol": log_volumes[..., 1],
-                "marginal_vol": log_volumes[..., 1].exp(),
+                # "marginal_vol": log_volumes[..., 1].exp(),
                 "side_length": -boxes.sum(dim=-2),
             }
             metrics_to_collect = {
