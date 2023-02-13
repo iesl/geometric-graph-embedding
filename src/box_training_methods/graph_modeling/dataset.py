@@ -439,7 +439,7 @@ class HierarchicalNegativeEdges:
                 raise NotImplementedError
 
             node_to_weight = torch.FloatTensor([node_to_weight[k] for k in sorted(list(self.nodes))]).unsqueeze(-1)
-            node_to_weight = torch.cat([node_to_weight, torch.tensor([[self.EMB_PAD]])], dim=0)
+            node_to_weight = torch.cat([node_to_weight, torch.tensor([[0.0]])], dim=0)
             self.weights = torch.nn.Embedding.from_pretrained(node_to_weight, freeze=True, padding_idx=self.EMB_PAD)
 
         self.negative_roots = self.precompute_negatives()
@@ -461,6 +461,7 @@ class HierarchicalNegativeEdges:
         # Implement a policy that returns all negative candidates w/o repetition.
         # This will require a mask to be used inside TBox forward method.
         if self.sampling_strategy == "exact":
+
             tails = tails.unsqueeze(-1).expand(-1, negative_candidates.shape[-1])
             negative_edges = torch.stack([negative_candidates, tails], dim=-1)
             padding_mask = (negative_candidates != self.EMB_PAD).long().unsqueeze(-1).expand(-1, -1, 2)
@@ -474,6 +475,7 @@ class HierarchicalNegativeEdges:
             return torch.cat([negative_edges, padding_mask], dim=1)
 
         else:
+
             negative_candidates_weights = self.weights.to(positive_edges.device)(negative_candidates).squeeze()
             negative_idxs = torch.tensor(list(WeightedRandomSampler(weights=negative_candidates_weights,
                                                                     num_samples=self.negative_ratio,
