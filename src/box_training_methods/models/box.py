@@ -195,7 +195,10 @@ class TBox(Module):
                 "neg": wandb.Histogram(out[..., 1:].detach().exp().cpu()),
             }
             for k, v in regularizer_terms.items():
-                metrics_to_collect[k] = wandb.Histogram(v.detach().cpu())
+                if k == "intersection_temp":
+                    metrics_to_collect[k] = v
+                else:
+                    metrics_to_collect[k] = wandb.Histogram(v.detach().cpu())
 
             metric_logger.metric_logger.collect(
                 {f"[Train] {k}": v for k, v in metrics_to_collect.items()},
