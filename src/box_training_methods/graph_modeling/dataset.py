@@ -424,14 +424,18 @@ class HierarchicalNegativeEdges:
 
         if self.sampling_strategy != "exact":
 
-            if self.sampling_strategy == "number_of_descendants":
+            if self.sampling_strategy == "equal_weights":
+                node_to_weight = {n: 1 for n in G.nodes}
+            elif self.sampling_strategy == "number_of_descendants":
                 # TODO this is a very inefficient way to collect this info, do it in a single traversal
                 node_to_weight = {n: len(nx.descendants(G, n)) for n in G.nodes}
-            else:
+            elif self.sampling_strategy == "node_depth":
                 # calculate node depths (used as weights)
                 # root nodes are at depth 1, successive levels at depths 2, 3, 4...
                 # FIXME node to depth dict for dag with multiple roots (the line below assumes there's a single root)
                 # node_to_weight = {n: len(p) for n, p in nx.shortest_path(G, 0).items()}
+                raise NotImplementedError
+            else:
                 raise NotImplementedError
 
             node_to_weight = torch.FloatTensor([node_to_weight[k] for k in sorted(list(self.nodes))]).unsqueeze(-1)
