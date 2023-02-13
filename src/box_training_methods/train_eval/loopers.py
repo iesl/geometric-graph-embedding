@@ -77,8 +77,12 @@ class GraphModelingTrainLooper:
                 self.model.train()
                 with torch.enable_grad():
                     self.train_loop(epoch)
+
+                    # 2D TBOX VISUALIZATION INFO
                     if isinstance(self.model, TBox):
                         box_collection.append(torch.clone(self.model.boxes.detach()))
+
+            # VISUALIZE TBOX IN 2D
             if isinstance(self.model, TBox):
                 plot_2d_tbox(box_collection=torch.stack(box_collection),
                              negative_sampler=neg_sampler_obj_to_str[type(self.dl.dataset.negative_sampler)],
