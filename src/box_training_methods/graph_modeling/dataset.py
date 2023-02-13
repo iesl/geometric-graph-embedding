@@ -477,7 +477,7 @@ class HierarchicalNegativeEdges:
             negative_candidates_weights = self.weights.to(positive_edges.device)(negative_candidates).squeeze()
             negative_idxs = torch.tensor(list(WeightedRandomSampler(weights=negative_candidates_weights,
                                                                     num_samples=self.negative_ratio,
-                                                                    replacement=True)))
+                                                                    replacement=True))).to(positive_edges.device)
             try:
                 negative_nodes = torch.gather(negative_candidates, -1, negative_idxs)
             except RuntimeError:
