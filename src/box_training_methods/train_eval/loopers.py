@@ -78,6 +78,10 @@ class GraphModelingTrainLooper:
                 with torch.enable_grad():
                     self.train_loop(epoch)
 
+                    if epoch % 5 == 0:
+                        for eval_looper in self.eval_loopers:
+                            eval_looper.loop()
+
                     # 2D TBOX VISUALIZATION INFO
                     if isinstance(self.model, TBox):
                         box_collection.append(torch.clone(self.model.boxes.detach()))
@@ -378,11 +382,13 @@ class GraphModelingEvalLooper:
         logger.debug("Evaluating model predictions on full adjacency matrix")
         time1 = time.time()
         previous_device = next(iter(self.model.parameters())).device
-        num_nodes = self.dl.dataset.num_nodes
+        # num_nodes = self.dl.dataset.num_nodes
+        num_nodes = self.dl.sampler.data_source.num_nodes
         ground_truth = np.zeros((num_nodes, num_nodes))
-        pos_index = self.dl.dataset.edges.cpu().numpy()
-        # release RAM
-        del self.dl.dataset
+        # pos_index = self.dl.dataset.edges.cpu().numpy()
+        pos_index = self.dl.sampler.data_source.edges.cpu().numpy()
+        # # release RAM
+        # del self.dl.dataset
 
         ground_truth[pos_index[:, 0], pos_index[:, 1]] = 1
 
