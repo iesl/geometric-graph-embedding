@@ -151,10 +151,7 @@ class TBox(Module):
         :param idxs: Tensor of shape (..., 2) indicating edges, i.e. [...,0] -> [..., 1] is an edge
         :returns: FloatTensor representing the energy of the edges in `idxs`
         """
-        try:
-            boxes = self.boxes[idxs]  # shape (..., 2, 2 (min/-max), dim)
-        except RuntimeError:
-            breakpoint()
+        boxes = self.boxes[idxs]  # shape (..., 2, 2 (min/-max), dim)
 
         if self.hard_box and self.training:
             return boxes
