@@ -440,6 +440,8 @@ class HierarchicalNegativeEdges:
 
         self.negative_roots = self.precompute_negatives()
 
+        self.graph_analytics()
+
     def __call__(self, positive_edges: Optional[LongTensor]) -> LongTensor:
         """
         Return negative edges for each positive edge.
@@ -513,6 +515,24 @@ class HierarchicalNegativeEdges:
         negative_roots = negatives.difference(set(A__.nonzero()[1]))
 
         return sorted(list(negative_roots))
+
+    def graph_analytics(self):
+
+        density = nx.density(self.G)
+
+        num_negative_roots_per_node = (self.negative_roots != self.EMB_PAD).int().sum(dim=-1)
+        max_num_negative_roots = self.negative_roots.shape[-1]
+        min_num_negative_roots = torch.min(num_negative_roots_per_node)
+        avg_num_negative_roots = torch.mean(num_negative_roots_per_node.float())
+
+        stats = {
+            "density": density,
+            "max_num_negative_roots": max_num_negative_roots,
+            "min_num_negative_roots": min_num_negative_roots,
+            "avg_num_negative_roots": avg_num_negative_roots,
+        }
+
+        return stats
 
     @property
     def device(self):
