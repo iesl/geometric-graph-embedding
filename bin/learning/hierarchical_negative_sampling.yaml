@@ -14,9 +14,10 @@ command:
   - --log_interval=0.2
   - --log_batch_size=7
   - --log_eval_batch_size=20
-  - --data_path=data/graphs13/balanced_tree/branching=10-log_num_nodes=13-transitive_closure=False/
-  - --negative_ratio=128
-  - --negative_sampler=hierarchical
+  - --data_path=X
+  - --negative_ratio=32
+  - --negative_sampler=X
+  - --hierarchical_negative_sampling_strategy=X
   - --wandb
 method: random
 metric:
@@ -28,7 +29,7 @@ parameters:
     min: -9.2
     max: 0
   dim:
-    values: [2, 4, 8, 32]
+    values: [2, 4, 8]
   negative_weight:
     distribution: uniform
     min: 0.5
