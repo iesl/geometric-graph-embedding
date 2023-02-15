@@ -395,7 +395,7 @@ class RandomNegativeEdges:
 class HierarchicalNegativeEdges:
 
     edges: Tensor = attr.ib(validator=_validate_edge_tensor)
-    sampling_strategy: str = "exact"  # "number_of_descendants", "depth"
+    sampling_strategy: str = "exact"  # "uniform", "descendants"
     negative_ratio: int = 16
 
     def __attrs_post_init__(self):
@@ -417,6 +417,7 @@ class HierarchicalNegativeEdges:
             A_ += A_ @ A
         A_[A_ > 0] = 1
 
+        self.A = A
         self.A_ = csr_matrix(A_)
         self.G = G
 
@@ -424,9 +425,9 @@ class HierarchicalNegativeEdges:
 
         if self.sampling_strategy != "exact":
 
-            if self.sampling_strategy == "equal_weights":
+            if self.sampling_strategy == "uniform":
                 node_to_weight = {n: 1 for n in G.nodes}
-            elif self.sampling_strategy == "number_of_descendants":
+            elif self.sampling_strategy == "descendants":
                 # TODO this is a very inefficient way to collect this info, do it in a single traversal
                 node_to_weight = {n: len(nx.descendants(G, n)) for n in G.nodes}
             elif self.sampling_strategy == "node_depth":
@@ -443,8 +444,6 @@ class HierarchicalNegativeEdges:
             self.weights = torch.nn.Embedding.from_pretrained(node_to_weight, freeze=True, padding_idx=self.EMB_PAD)
 
         self.negative_roots = self.precompute_negatives()
-
-        self.graph_analytics()
 
     def __call__(self, positive_edges: Optional[LongTensor]) -> LongTensor:
         """
@@ -521,24 +520,6 @@ class HierarchicalNegativeEdges:
         negative_roots = negatives.difference(set(A__.nonzero()[1]))
 
         return sorted(list(negative_roots))
-
-    def graph_analytics(self):
-
-        density = nx.density(self.G)
-
-        num_negative_roots_per_node = (self.negative_roots != self.EMB_PAD).int().sum(dim=-1)
-        max_num_negative_roots = self.negative_roots.shape[-1]
-        min_num_negative_roots = torch.min(num_negative_roots_per_node)
-        avg_num_negative_roots = torch.mean(num_negative_roots_per_node.float())
-
-        stats = {
-            "density": density,
-            "max_num_negative_roots": max_num_negative_roots,
-            "min_num_negative_roots": min_num_negative_roots,
-            "avg_num_negative_roots": avg_num_negative_roots,
-        }
-
-        return stats
 
     @property
     def device(self):
