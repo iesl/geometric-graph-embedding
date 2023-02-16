@@ -83,7 +83,7 @@ def graph_analytics(graph_npz_path, save_dir):
 def generate_analytics_for_graphs_in_dir(graphs_root="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graphs13/",
                                          save_dir="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graph_analytics/"):
 
-    for root, dirs, files in os.path.walk(graphs_root):
+    for root, dirs, files in os.walk(graphs_root):
         for f in files:
             if f.endswith(".npz"):
                 graph_npz_path = os.path.join([root, f])
