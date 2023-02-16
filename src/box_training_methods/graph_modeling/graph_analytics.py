@@ -21,7 +21,7 @@ def save_histogram(negatives_per_node, random_or_hierarchical, graph_id, save_di
 
 def graph_analytics(graph_npz_path, save_dir):
 
-    graph_id = "-".join(graph_npz_path.split("/")[-2:])[:-len(".npz")]
+    graph_id = "-".join(graph_npz_path.split("/")[-3:])[:-len(".npz")]
 
     training_edges, num_nodes = edges_and_num_nodes_from_npz(graph_npz_path)
 
@@ -39,20 +39,20 @@ def graph_analytics(graph_npz_path, save_dir):
     max_num_rand_negatives = torch.max(num_rand_negatives_per_node).item()
     min_num_rand_negatives = torch.min(num_rand_negatives_per_node).item()
     avg_num_rand_negatives = torch.mean(num_rand_negatives_per_node.float()).item()
-    save_histogram(negatives_per_node=num_rand_negatives_per_node,
-                   random_or_hierarchical="random",
-                   graph_id=graph_id,
-                   save_dir=save_dir)
+    # save_histogram(negatives_per_node=num_rand_negatives_per_node,
+    #                random_or_hierarchical="random",
+    #                graph_id=graph_id,
+    #                save_dir=save_dir)
 
     # HIERARCHICAL STATS
     num_hier_negative_roots_per_node = (HNE.negative_roots != HNE.EMB_PAD).int().sum(dim=-1)  # TODO save in file as histogram (wandb or run dir)
     max_num_hier_negative_roots = HNE.negative_roots.shape[-1]
     min_num_hier_negative_roots = torch.min(num_hier_negative_roots_per_node).item()
     avg_num_hier_negative_roots = torch.mean(num_hier_negative_roots_per_node.float()).item()
-    save_histogram(negatives_per_node=num_hier_negative_roots_per_node,
-                   random_or_hierarchical="hierarchical",
-                   graph_id=graph_id,
-                   save_dir=save_dir)
+    # save_histogram(negatives_per_node=num_hier_negative_roots_per_node,
+    #                random_or_hierarchical="hierarchical",
+    #                graph_id=graph_id,
+    #                save_dir=save_dir)
 
     # the greater this is the more efficient hierarchical sampling will be
     avg_rand_to_avg_hier_ratio = avg_num_rand_negatives / avg_num_hier_negative_roots
