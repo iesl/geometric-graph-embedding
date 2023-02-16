@@ -1,4 +1,5 @@
 import torch
+import os
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -18,11 +19,11 @@ def save_histogram(negatives_per_node, random_or_hierarchical, graph_id, save_di
     plt.clf()
 
 
-def graph_analytics(npz_path, save_dir):
+def graph_analytics(graph_npz_path, save_dir):
 
-    graph_id = "-".join(npz_path.split("/")[-2:])[:-len(".npz")]
+    graph_id = "-".join(graph_npz_path.split("/")[-2:])[:-len(".npz")]
 
-    training_edges, num_nodes = edges_and_num_nodes_from_npz(npz_path)
+    training_edges, num_nodes = edges_and_num_nodes_from_npz(graph_npz_path)
 
     HNE = HierarchicalNegativeEdges(
         edges=training_edges,
@@ -79,13 +80,19 @@ def graph_analytics(npz_path, save_dir):
     return stats
 
 
-def generate_analytics_for_graphs_in_dir(root="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graphs13/"):
-    pass
+def generate_analytics_for_graphs_in_dir(graphs_root="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graphs13/",
+                                         save_dir="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graph_analytics/"):
 
+    for root, dirs, files in os.path.walk(graphs_root):
+        for f in files:
+            if f.endswith(".npz"):
+                graph_npz_path = os.path.join([root, f])
+                graph_analytics(graph_npz_path, save_dir)
 
 if __name__ == '__main__':
-    graph_analytics("/Users/brozonoyer/Desktop/IESL/box-training-methods/data/graphs/nested_chinese_restaurant_process/alpha=10-log_num_nodes=12-transitive_closure=False/333283769.npz",
-                    save_dir="/Users/brozonoyer/Desktop/IESL/box-training-methods/figs/graph_analytics/")
+
+    # graph_analytics("/Users/brozonoyer/Desktop/IESL/box-training-methods/data/graphs/nested_chinese_restaurant_process/alpha=10-log_num_nodes=12-transitive_closure=False/333283769.npz",
+    #                 save_dir="/Users/brozonoyer/Desktop/IESL/box-training-methods/figs/graph_analytics/")
     # graph_analytics("/Users/brozonoyer/Desktop/IESL/box-training-methods/data/graphs/hierarchical_negative_sampling_debugging_graphs/log_num_nodes=12-transitive_closure=False-which=dag/1160028402.npz",
     #                 save_dir="/Users/brozonoyer/Desktop/IESL/box-training-methods/figs/graph_analytics/")
     # graph_analytics("/Users/brozonoyer/Desktop/IESL/box-training-methods/data/graphs/balanced_tree/branching=2-log_num_nodes=12-transitive_closure=False/2952040816.npz",
