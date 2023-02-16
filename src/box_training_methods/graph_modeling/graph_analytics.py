@@ -86,7 +86,7 @@ def generate_analytics_for_graphs_in_dir(graphs_root="/work/pi_mccallum_umass_ed
     for root, dirs, files in os.walk(graphs_root):
         for f in files:
             if f.endswith(".npz"):
-                graph_npz_path = os.path.join([root, f])
+                graph_npz_path = "/".join([root, f])
                 graph_analytics(graph_npz_path, save_dir)
 
 if __name__ == '__main__':
