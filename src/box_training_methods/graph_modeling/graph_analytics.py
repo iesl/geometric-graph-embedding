@@ -58,7 +58,14 @@ def graph_analytics(graph_npz_path, save_dir):
     avg_rand_to_avg_hier_ratio = avg_num_rand_negatives / avg_num_hier_negative_roots
 
     roots = [n for n, d in G.in_degree() if d == 0]
-    max_depth = max([len(nx.shortest_path(G, source=r, target=n)) - 1 for r in roots for n in G.nodes])
+    depths = []
+    for r in roots:
+        for n in G.nodes:
+            try:
+                depths.append(len(nx.shortest_path(G, source=r, target=n)) - 1)
+            except nx.NetworkXNoPath:
+                pass
+    max_depth = max(depths)
 
     stats = {
         "graph_id": graph_id,
