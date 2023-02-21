@@ -57,20 +57,20 @@ def graph_analytics(graph_npz_path, save_dir):
     # the greater this is the more efficient hierarchical sampling will be
     avg_rand_to_avg_hier_ratio = avg_num_rand_negatives / avg_num_hier_negative_roots
 
+    roots = [n for n, d in G.in_degree() if d == 0]
+    max_depth = max([len(nx.shortest_path(G, source=r, target=n)) - 1 for r in roots for n in G.nodes])
+
     stats = {
         "graph_id": graph_id,
         "graph_density": density,
         "# nodes": num_nodes,
-        "random": {
-            "max # negatives": max_num_rand_negatives,
-            "min # negatives": min_num_rand_negatives,
-            "avg # negatives": avg_num_rand_negatives,
-        },
-        "hierarchical": {
-            "max # negative roots": max_num_hier_negative_roots,
-            "min # negative roots": min_num_hier_negative_roots,
-            "avg # negative roots": avg_num_hier_negative_roots,
-        },
+        "max depth": max_depth,
+        "random max # negatives": max_num_rand_negatives,
+        "random min # negatives": min_num_rand_negatives,
+        "random avg # negatives": avg_num_rand_negatives,
+        "hierarchical max # negative roots": max_num_hier_negative_roots,
+        "hierarchical min # negative roots": min_num_hier_negative_roots,
+        "hierarchical avg # negative roots": avg_num_hier_negative_roots,
         "avg random to avg hierarchical ratio": avg_rand_to_avg_hier_ratio,
     }
 
@@ -80,14 +80,34 @@ def graph_analytics(graph_npz_path, save_dir):
     return stats
 
 
+def all_stats_to_csv(all_stats, csv_fpath):
+
+    rows = []
+    header_row = ",".join(all_stats[0].keys())
+    rows.append(header_row)
+    for stats in all_stats:
+        values = stats.values()
+        row = ",".join(values)
+        rows.append(row)
+
+    csv_str = "\n".join(rows)
+    with open(csv_fpath, "w") as f:
+        f.write(csv_str)
+
+
 def generate_analytics_for_graphs_in_dir(graphs_root="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graphs13/",
                                          save_dir="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graph_analytics/"):
 
+    all_stats = []
     for root, dirs, files in os.walk(graphs_root):
         for f in files:
             if f.endswith(".npz"):
                 graph_npz_path = "/".join([root, f])
-                graph_analytics(graph_npz_path, save_dir)
+                stats = graph_analytics(graph_npz_path, save_dir)
+                all_stats.append(stats)
+
+    return all_stats
+
 
 if __name__ == '__main__':
 
@@ -99,5 +119,6 @@ if __name__ == '__main__':
     #                 save_dir="/Users/brozonoyer/Desktop/IESL/box-training-methods/figs/graph_analytics/")
     # graph_analytics("/Users/brozonoyer/Desktop/IESL/box-training-methods/data/graphs/hierarchical_negative_sampling_debugging_graphs/log_num_nodes=12-transitive_closure=False-which=balanced-tree/1196640715.npz",
     #                 save_dir="/Users/brozonoyer/Desktop/IESL/box-training-methods/figs/graph_analytics/")
-    generate_analytics_for_graphs_in_dir(graphs_root="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graphs13/",
-                                         save_dir="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graph_analytics/")
+    all_stats = generate_analytics_for_graphs_in_dir(graphs_root="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graphs13/",
+                                                     save_dir="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graph_analytics/")
+    all_stats_to_csv(all_stats, "/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graph_analytics/graphs13_stats.csv")
