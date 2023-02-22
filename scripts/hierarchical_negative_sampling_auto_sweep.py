@@ -52,7 +52,7 @@ def init_sweeps():
             # config["graph_family"] = graph_family
             sweep_names.append(sweep_name)
 
-            sweep_id = wandb.sweep(sweep=config, entity="hierarchical-negative-sampling", project="hns")
+            sweep_id = wandb.sweep(sweep=config, entity="brozonoyer", project="hierarchical-negative-sampling")
             sweep_ids.append(sweep_id)
 
     return sweep_names, sweep_ids
