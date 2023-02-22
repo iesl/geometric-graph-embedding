@@ -24,11 +24,11 @@ parameters:
     min: -9.2
     max: 0
   dim:
-    values: [2, 4, 8]
+    values: [8, 32, 128]
   negative_ratio:
     values: [8, 16, 128]
   log_batch_size:
-    values: [0, 4, 7]
+    values: [0, 4, 6]
   negative_weight:
     distribution: uniform
     min: 0.5
