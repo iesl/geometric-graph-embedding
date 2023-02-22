@@ -46,7 +46,7 @@ def init_sweeps():
                 config["command"].append("=".join(["--negative_sampler", "hierarchical"]))
                 config["command"].append("=".join(["--hierarchical_negative_sampling_strategy", strategy]))
 
-            sweep_name = f"{negative_sampling}_{data_path}"
+            sweep_name = f"{negative_sampling}_{graph_family}_{data_path.split('/')[-1]}"
             config["name"] = sweep_name
             # config["tc"] = tc
             # config["graph_family"] = graph_family
@@ -61,5 +61,14 @@ def init_sweeps():
 if __name__ == '__main__':
 
     sweep_names, sweep_ids = init_sweeps()
+
+    bash_script = ["#!/bin/bash"]
+    for id in sweep_ids:
+        bash_script.append(
+            f"slurm_wandby_agent.py {id} --slurm_dir ./slurm/brozonoyer/hierarchical-negative-sampling --srun-template ../../srun.sh --sbatch-template ../../sbatch.sh"
+        )
+    with open("./bash_run_sweeps.sh", "w") as f:
+        f.write("\n".join(bash_script))
+
     for i in range(len(sweep_names)):
         print(f"{sweep_names[i]}\t{sweep_ids[i]}")
