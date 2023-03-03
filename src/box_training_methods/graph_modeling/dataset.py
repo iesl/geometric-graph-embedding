@@ -430,12 +430,12 @@ class HierarchicalNegativeEdges:
             elif self.sampling_strategy == "descendants":
                 # TODO this is a very inefficient way to collect this info, do it in a single traversal
                 node_to_weight = {n: len(nx.descendants(G, n)) for n in G.nodes}
-            elif self.sampling_strategy == "node_depth":
-                # calculate node depths (used as weights)
-                # root nodes are at depth 1, successive levels at depths 2, 3, 4...
-                # FIXME node to depth dict for dag with multiple roots (the line below assumes there's a single root)
-                # node_to_weight = {n: len(p) for n, p in nx.shortest_path(G, 0).items()}
-                raise NotImplementedError
+            # elif self.sampling_strategy == "node_depth":
+            #     # calculate node depths (used as weights)
+            #     # root nodes are at depth 1, successive levels at depths 2, 3, 4...
+            #     # FIXME node to depth dict for dag with multiple roots (the line below assumes there's a single root)
+            #     # node_to_weight = {n: len(p) for n, p in nx.shortest_path(G, 0).items()}
+            #     raise NotImplementedError
             else:
                 raise NotImplementedError
 
@@ -443,7 +443,9 @@ class HierarchicalNegativeEdges:
             node_to_weight = torch.cat([node_to_weight, torch.tensor([[0.0]])], dim=0)
             self.weights = torch.nn.Embedding.from_pretrained(node_to_weight, freeze=True, padding_idx=self.EMB_PAD)
 
+        t0 = time()
         self.negative_roots = self.precompute_negatives()
+        logger.info(f"Time to precompute negative roots: {time() - t0}")
 
     def __call__(self, positive_edges: Optional[LongTensor]) -> LongTensor:
         """
