@@ -4,6 +4,7 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 import json
+import time
 
 from box_training_methods.graph_modeling.dataset import edges_and_num_nodes_from_npz, HierarchicalNegativeEdges
 
@@ -58,6 +59,16 @@ def graph_analytics(graph_npz_path, save_dir):
     avg_rand_to_avg_hier_ratio = avg_num_rand_negatives / avg_num_hier_negative_roots
 
     roots = [n for n, d in G.in_degree() if d == 0]
+
+    t1 = time.time()
+    max_depths = []
+    for r in roots:
+        max_depths.append(dfs_max_depth(r, G, 0))
+    max_depth = max(max_depths)
+    t2 = time.time()
+    print(f"Time dfs: {str(t2 - t1)}")
+
+    t3 = time.time()
     depths = []
     for r in roots:
         for n in G.nodes:
@@ -66,6 +77,10 @@ def graph_analytics(graph_npz_path, save_dir):
             except nx.NetworkXNoPath:
                 pass
     max_depth = max(depths)
+    t4 = time.time()
+    print(f"Time brute force: {str(t4 - t3)}")
+
+    breakpoint()
 
     stats = {
         "graph_id": graph_id,
@@ -85,6 +100,16 @@ def graph_analytics(graph_npz_path, save_dir):
         json.dump(stats, f, sort_keys=False, indent=4)
 
     return stats
+
+
+def dfs_max_depth(r, G, max_depth):
+    children_max_depths = []
+    print(f"r: {r}")
+    print(f"\tmax depth: {max_depth}")
+    for s in G.successors(r):
+        children_max_depths.append(dfs_max_depth(s, G, max_depth + 1))
+    print(f"\tchildren max depths: {children_max_depths}")
+    return max(children_max_depths) if len(children_max_depths) > 0 else max_depth
 
 
 def all_stats_to_csv(all_stats, csv_fpath):
@@ -118,14 +143,14 @@ def generate_analytics_for_graphs_in_dir(graphs_root="/work/pi_mccallum_umass_ed
 
 if __name__ == '__main__':
 
-    # graph_analytics("/Users/brozonoyer/Desktop/IESL/box-training-methods/data/graphs/nested_chinese_restaurant_process/alpha=10-log_num_nodes=12-transitive_closure=False/333283769.npz",
-    #                 save_dir="/Users/brozonoyer/Desktop/IESL/box-training-methods/figs/graph_analytics/")
+    graph_analytics("/Users/brozonoyer/Desktop/IESL/box-training-methods/data/graphs/kronecker_graph/a=1.0-b=0.6-c=0.5-d=0.2-log_num_nodes=12-transitive_closure=False/1619702443.npz",
+                    save_dir="/Users/brozonoyer/Desktop/IESL/box-training-methods/figs/graph_analytics/")
     # graph_analytics("/Users/brozonoyer/Desktop/IESL/box-training-methods/data/graphs/hierarchical_negative_sampling_debugging_graphs/log_num_nodes=12-transitive_closure=False-which=dag/1160028402.npz",
     #                 save_dir="/Users/brozonoyer/Desktop/IESL/box-training-methods/figs/graph_analytics/")
     # graph_analytics("/Users/brozonoyer/Desktop/IESL/box-training-methods/data/graphs/balanced_tree/branching=2-log_num_nodes=12-transitive_closure=False/2952040816.npz",
     #                 save_dir="/Users/brozonoyer/Desktop/IESL/box-training-methods/figs/graph_analytics/")
     # graph_analytics("/Users/brozonoyer/Desktop/IESL/box-training-methods/data/graphs/hierarchical_negative_sampling_debugging_graphs/log_num_nodes=12-transitive_closure=False-which=balanced-tree/1196640715.npz",
     #                 save_dir="/Users/brozonoyer/Desktop/IESL/box-training-methods/figs/graph_analytics/")
-    all_stats = generate_analytics_for_graphs_in_dir(graphs_root="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graphs13/",
-                                                     save_dir="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graph_analytics/")
-    all_stats_to_csv(all_stats, "/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graph_analytics/graphs13_stats.csv")
+    # all_stats = generate_analytics_for_graphs_in_dir(graphs_root="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graphs13/",
+    #                                                  save_dir="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graph_analytics/")
+    # all_stats_to_csv(all_stats, "/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graph_analytics/graphs13_stats.csv")
