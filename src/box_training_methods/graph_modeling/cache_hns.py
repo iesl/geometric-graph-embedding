@@ -41,5 +41,5 @@ def traverse_and_cache_hns(graphs_dir, graph_types=['balanced_tree', 'nested_chi
 
 
 if __name__ == '__main__':
-    traverse_and_cache_hns("/Users/brozonoyer/Desktop/IESL/box-training-methods/data/graphs")
-    # traverse_and_cache_hns("/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graphs13/")
+    # traverse_and_cache_hns("/Users/brozonoyer/Desktop/IESL/box-training-methods/data/graphs")
+    traverse_and_cache_hns("/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graphs13/")

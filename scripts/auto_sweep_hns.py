@@ -61,7 +61,7 @@ def main(config):
         if not os.path.exists("sweeps_configs"):
             os.makedirs("sweeps_configs")
         fout = open(
-            f"sweeps_configs/{config.model_type}_{config.dim}_{config.data_path.replace('/','_')}.jsonl",
+            f"sweeps_configs/{config.negative_sampling}_{config.data_path.replace('/','_')}.jsonl",
             "w+",
         )
     count_sweep = 0
@@ -75,7 +75,7 @@ def main(config):
         count_this_sweep = 0
         best_hyperparams = None
         best_metric = 0.0
-        target_filename = f"results/{config.negative_sampling}/*metric"
+        target_filename = f"hns_results/{config.negative_sampling}/*metric"
         for f in path.glob(target_filename):
             # print(f)
             count_finished_runs += 1
@@ -102,16 +102,16 @@ def main(config):
         # If there is less then 95% results, clean the result and do a new sweep.
         if config.bayes_run == True and count_this_sweep <= 0.95 * config.max_run:
             print("deleting saved results in this sweep")
-            target_filename = f"results/{config.model_type}_{config.dim}/*metric"
+            target_filename = f"hns_results/{config.negative_sampling}/*metric"
             for f in path.glob(target_filename):
                 f.unlink()
 
             sweep_config = config_generation(
                 negative_sampling=config.negative_sampling, path=str(path)
             )
-            sweep_id = wandb.sweep(sweep_config, project="hierarchical-negative-sampling")
+            sweep_id = wandb.sweep(sweep_config, entity="brozonoyer", project="hierarchical-negative-sampling")
             os.system(
-                f"sh bin/launch_train_sweep.sh dongxu/learning_generated_graph/{sweep_id} {config.partition} {config.max_run} "
+                f"sh bin/launch_train_sweep.sh brozonoyer/hns/{sweep_id} {config.partition} {config.max_run} "
             )
             fout.write(f"{sweep_id} {json.dumps(sweep_config)}\n")
 
