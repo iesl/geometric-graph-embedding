@@ -268,6 +268,7 @@ def setup_training_data(device: Union[str, torch.device], **config) -> GraphData
             edges=training_edges,
             negative_ratio=config["negative_ratio"],
             sampling_strategy=config["hierarchical_negative_sampling_strategy"],
+            cache_dir=config["data_path"] + ".hns",
         )
     else:
         raise NotImplementedError

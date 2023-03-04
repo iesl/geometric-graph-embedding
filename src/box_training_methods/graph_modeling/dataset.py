@@ -397,6 +397,7 @@ class HierarchicalNegativeEdges:
     edges: Tensor = attr.ib(validator=_validate_edge_tensor)
     sampling_strategy: str = "exact"  # "uniform", "descendants"
     negative_ratio: int = 16
+    cache_dir: str = None
 
     def __attrs_post_init__(self):
 
@@ -428,8 +429,13 @@ class HierarchicalNegativeEdges:
             if self.sampling_strategy == "uniform":
                 node_to_weight = {n: 1 for n in G.nodes}
             elif self.sampling_strategy == "descendants":
-                # TODO this is a very inefficient way to collect this info, do it in a single traversal
-                node_to_weight = {n: len(nx.descendants(G, n)) for n in G.nodes}
+                if os.path.exists(self.cache_dir):
+                    logger.info("Loading negative weights from cache...")
+                    with open(os.path.join(self.cache_dir, "node_to_num_descendants.pkl"), "rb") as f:
+                        node_to_weight = pickle.load(f)
+                else:
+                    # TODO this is a very inefficient way to collect this info, do it in a single traversal
+                    node_to_weight = {n: len(nx.descendants(G, n)) for n in G.nodes}
             # elif self.sampling_strategy == "node_depth":
             #     # calculate node depths (used as weights)
             #     # root nodes are at depth 1, successive levels at depths 2, 3, 4...
@@ -491,6 +497,11 @@ class HierarchicalNegativeEdges:
             return negative_edges
 
     def precompute_negatives(self):
+
+        if os.path.exists(self.cache_dir):
+            logger.info("Loading negative roots from cache...")
+            negative_roots = torch.load(os.path.join(self.cache_dir, "negative_roots.pt"))
+            return negative_roots
 
         negative_roots = []
         for node in range(self.A_.shape[0]):
