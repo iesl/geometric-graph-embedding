@@ -14,4 +14,5 @@ echo $OMP_NUM_THREADS
 echo $OMP_NUM_THREADS
 echo $OMP_NUM_THREADS
 
+hostname
 wandb agent --count $count $sweep_id 

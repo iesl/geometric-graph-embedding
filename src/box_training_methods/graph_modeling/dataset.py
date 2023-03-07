@@ -1,3 +1,4 @@
+import os
 import math
 from pathlib import Path
 from time import time
@@ -397,7 +398,7 @@ class HierarchicalNegativeEdges:
     edges: Tensor = attr.ib(validator=_validate_edge_tensor)
     sampling_strategy: str = "exact"  # "uniform", "descendants"
     negative_ratio: int = 16
-    cache_dir: str = None
+    cache_dir: str = ""
 
     def __attrs_post_init__(self):
 

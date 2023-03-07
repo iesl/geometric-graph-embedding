@@ -11,8 +11,9 @@ import wandb
 
 
 def config_generation(negative_sampling, path):
-
+    graph_type, graph = path.split("/")[-2:]
     sweep_config = {
+        "name": f"{graph_type}_{graph}_{negative_sampling}",
         # "controller": {"type": "local"},
         "program": "scripts/box-training-methods",
         "command": [
@@ -46,11 +47,11 @@ def config_generation(negative_sampling, path):
 
     ns = negative_sampling.split(":")
     if len(ns) == 1:
-        negative_sampler = ns
+        negative_sampler = ns[0]
     else:
         negative_sampler, hierarchical_negative_sampling_strategy = ns
-        config["command"]["--hierarchical_negative_sampling_strategy"] = hierarchical_negative_sampling_strategy
-    config["command"]["--negative_sampler"] = negative_sampler
+        sweep_config["command"].append(f"--hierarchical_negative_sampling_strategy={hierarchical_negative_sampling_strategy}")
+    sweep_config["command"].append(f"--negative_sampler={negative_sampler}")
 
     return sweep_config
 
@@ -109,9 +110,9 @@ def main(config):
             sweep_config = config_generation(
                 negative_sampling=config.negative_sampling, path=str(path)
             )
-            sweep_id = wandb.sweep(sweep_config, entity="brozonoyer", project="hierarchical-negative-sampling")
+            sweep_id = wandb.sweep(sweep_config, entity="hierarchical-negative-sampling", project="hns")
             os.system(
-                f"sh bin/launch_train_sweep.sh brozonoyer/hns/{sweep_id} {config.partition} {config.max_run} "
+                f"sh bin/launch_train_sweep.sh hierarchical-negative-sampling/hns/{sweep_id} {config.partition} {config.max_run} "
             )
             fout.write(f"{sweep_id} {json.dumps(sweep_config)}\n")
 
@@ -139,7 +140,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--negative_sampling", type=str,
                         choices=["random", "hierarchical:exact", "hierarchical:uniform", "hierarchical:descendants"])
-    parser.add_argument("--partition", type=str, default="titanx-short")
+    parser.add_argument("--partition", type=str, default="gypsum-titanx")
     parser.add_argument("--max_run", type=int, default=100)
     parser.add_argument("--data_path", type=str, default="data/graphs/")
     config = parser.parse_args()
