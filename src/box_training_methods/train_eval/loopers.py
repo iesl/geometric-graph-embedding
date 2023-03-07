@@ -21,10 +21,10 @@ from box_training_methods.metrics import *
 ### VISUALIZATION IMPORTS ONLY
 from box_training_methods.visualization.plot_2d_tbox import plot_2d_tbox
 from box_training_methods.models.box import TBox
-from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, HierarchicalNegativeEdgesBatched
+from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, HierarchicalNegativeEdges
 neg_sampler_obj_to_str = {
     RandomNegativeEdges: "random",
-    HierarchicalNegativeEdgesBatched: "hierarchical"
+    HierarchicalNegativeEdges: "hierarchical"
 }
 ###
 
@@ -77,13 +77,21 @@ class GraphModelingTrainLooper:
                 self.model.train()
                 with torch.enable_grad():
                     self.train_loop(epoch)
+
+                    if epoch % 5 == 0:
+                        for eval_looper in self.eval_loopers:
+                            eval_looper.loop()
+
+                    # 2D TBOX VISUALIZATION INFO
                     if isinstance(self.model, TBox):
                         box_collection.append(torch.clone(self.model.boxes.detach()))
+
+            # VISUALIZE TBOX IN 2D
             if isinstance(self.model, TBox):
                 plot_2d_tbox(box_collection=torch.stack(box_collection),
                              negative_sampler=neg_sampler_obj_to_str[type(self.dl.dataset.negative_sampler)],
                              lr=self.opt.param_groups[0]['lr'],
-                             negative_sampling_strategy=self.dl.dataset.negative_sampler.sampling_strategy if isinstance(self.dl.dataset.negative_sampler, HierarchicalNegativeEdgesBatched) else None)
+                             negative_sampling_strategy=self.dl.dataset.negative_sampler.sampling_strategy if isinstance(self.dl.dataset.negative_sampler, HierarchicalNegativeEdges) else None)
         except StopLoopingException as e:
             logger.warning(str(e))
         finally:
@@ -374,11 +382,13 @@ class GraphModelingEvalLooper:
         logger.debug("Evaluating model predictions on full adjacency matrix")
         time1 = time.time()
         previous_device = next(iter(self.model.parameters())).device
-        num_nodes = self.dl.dataset.num_nodes
+        # num_nodes = self.dl.dataset.num_nodes
+        num_nodes = self.dl.sampler.data_source.num_nodes
         ground_truth = np.zeros((num_nodes, num_nodes))
-        pos_index = self.dl.dataset.edges.cpu().numpy()
-        # release RAM
-        del self.dl.dataset
+        # pos_index = self.dl.dataset.edges.cpu().numpy()
+        pos_index = self.dl.sampler.data_source.edges.cpu().numpy()
+        # # release RAM
+        # del self.dl.dataset
 
         ground_truth[pos_index[:, 0], pos_index[:, 1]] = 1
 

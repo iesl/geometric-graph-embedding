@@ -24,7 +24,7 @@ def generate_balanced_tree():
     ]
     g = nx.DiGraph()
     g.add_edges_from(edge_list)
-    g = nx.transitive_closure(g)
+    # g = nx.transitive_closure(g)
     return g
 
 

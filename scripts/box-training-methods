@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# EASY-INSTALL-ENTRY-SCRIPT: 'graph-modeling','console_scripts','graph_modeling'
-__requires__ = "graph-modeling"
+# EASY-INSTALL-ENTRY-SCRIPT: 'box-training-methods','console_scripts','box_training_methods'
+__requires__ = "box-training-methods"
 import re
 import sys
 
-from graph_modeling.__main__ import main
+from box_training_methods.__main__ import main
 
 if __name__ == "__main__":
     sys.argv[0] = re.sub(r"(-script\.pyw?|\.exe)?$", "", sys.argv[0])

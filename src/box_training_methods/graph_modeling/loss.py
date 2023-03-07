@@ -48,8 +48,7 @@ class BCEWithLogsNegativeSamplingLoss(Module):
 
         # mask out padding negative edges before applying softmax
         if negative_padding_mask is not None:
-            logit_prob_neg = logit_prob_neg * negative_padding_mask
-            logit_prob_neg[logit_prob_neg == 0] = -torch.inf                # for masked softmax
+            logit_prob_neg[negative_padding_mask == 0] = -torch.inf                # for masked softmax
 
         weights = F.softmax(logit_prob_neg, dim=-1)
         weighted_average_neg_loss = (weights * neg_loss).sum(dim=-1)

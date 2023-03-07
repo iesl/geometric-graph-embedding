@@ -5,7 +5,7 @@ import fastentrypoints
 from setuptools import find_packages, setup
 
 setup(
-    name="graph_modeling",
+    name="box_training_methods",
     version="0.1",
     packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     package_dir={"": "src"},

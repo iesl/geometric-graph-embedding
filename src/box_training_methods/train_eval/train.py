@@ -57,7 +57,7 @@ def training(config: Dict) -> None:
 
     if config["wandb"]:
         metric_logger.metric_logger = WandBLogger()
-        wandb.watch(model)
+        wandb.watch(models)
         for eval_looper in train_looper.eval_loopers:
             eval_looper.summary_func = wandb.run.summary.update
 

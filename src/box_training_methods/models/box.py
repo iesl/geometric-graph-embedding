@@ -187,7 +187,7 @@ class TBox(Module):
                 "intersection_temp": self.intersection_temp(idxs).squeeze(-2),
                 "volume_temp": self.volume_temp(idxs).squeeze(-2),
                 "log_marginal_vol": log_volumes[..., 1],
-                "marginal_vol": log_volumes[..., 1].exp(),
+                # "marginal_vol": log_volumes[..., 1].exp(),
                 "side_length": -boxes.sum(dim=-2),
             }
             metrics_to_collect = {
@@ -195,7 +195,10 @@ class TBox(Module):
                 "neg": wandb.Histogram(out[..., 1:].detach().exp().cpu()),
             }
             for k, v in regularizer_terms.items():
-                metrics_to_collect[k] = wandb.Histogram(v.detach().cpu())
+                if k == "intersection_temp":
+                    metrics_to_collect[k] = v
+                else:
+                    metrics_to_collect[k] = wandb.Histogram(v.detach().cpu())
 
             metric_logger.metric_logger.collect(
                 {f"[Train] {k}": v for k, v in metrics_to_collect.items()},
