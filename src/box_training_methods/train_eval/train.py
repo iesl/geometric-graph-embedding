@@ -153,7 +153,7 @@ def setup(**config):
         model, loss_func = task_train_eval.setup_model(train_dataset.num_nodes, device, **config)
     elif config["task"] == "multilabel_classification":
         box_model, instance_encoder, scorer, label_label_loss_func = \
-            task_train_eval.setup_model(taxonomy_dataset.num_nodes, device, **config)
+            task_train_eval.setup_model(taxonomy_dataset.num_nodes, train_dataset.instance_dim, device, **config)
 
     # setup optimizer
     if config["task"] == "graph_modeling":

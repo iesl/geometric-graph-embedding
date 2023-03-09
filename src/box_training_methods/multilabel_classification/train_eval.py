@@ -11,8 +11,14 @@ from pytorch_utils import TensorDataLoader, cuda_if_available
 
 from .dataset import edges_from_hierarchy_edge_list, ARFFReader, InstanceLabelsDataset
 from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, \
-    HierarchicalNegativeEdgesBatched, HierarchicalNegativeEdgesDebug, GraphDataset
+    HierarchicalNegativeEdges, GraphDataset
 
+from box_training_methods.models.temps import (
+    GlobalTemp,
+    PerDimTemp,
+    PerEntityTemp,
+    PerEntityPerDimTemp,
+)
 from box_training_methods.models.box import BoxMinDeltaSoftplus, TBox
 from box_training_methods.graph_modeling.loss import (
     BCEWithLogsNegativeSamplingLoss,
@@ -21,8 +27,8 @@ from box_training_methods.graph_modeling.loss import (
     MaxMarginOENegativeSamplingLoss,
     PushApartPullTogetherLoss,
 )
-from .instance_encoder import InstanceHardBoxEncoder
-from .instance_scorers.instance_as_box_scorers.hard_box_scorer import HardBoxScorer
+from box_training_methods.multilabel_classification.instance_encoder import InstanceAsPointEncoder#, InstanceAsBoxEncoder
+from box_training_methods.multilabel_classification.instance_scorers.instance_as_box_scorers.hard_box_scorer import HardBoxScorer
 
 
 __all__ = [
@@ -32,7 +38,7 @@ __all__ = [
 ]
 
 
-def setup_model(num_labels: int, device: Union[str, torch.device], **config) -> Tuple[Module, Callable]:
+def setup_model(num_labels: int, instance_dim: int, device: Union[str, torch.device], **config) -> Tuple[Module, Callable]:
     model_type = config["model_type"].lower()
     if model_type == "gumbel_box":
         box_model = BoxMinDeltaSoftplus(
@@ -78,11 +84,11 @@ def setup_model(num_labels: int, device: Union[str, torch.device], **config) -> 
         )
         label_label_loss_func = PushApartPullTogetherLoss(config["negative_weight"])
     else:
-        raise ValueError(f"Model type {config['model_type']} does not exist")
+        raise ValueError(f'Model type {config["model_type"]} does not exist')
     box_model.to(device)
 
     # TODO args from click
-    instance_encoder = InstanceHardBoxEncoder(input_dim=77, hidden_dim=64)
+    instance_encoder = InstanceAsPointEncoder(input_dim=instance_dim, hidden_dim=64, output_dim=config["dim"])
 
     # TODO args from click
     scorer = HardBoxScorer()
@@ -120,9 +126,11 @@ def setup_training_data(device: Union[str, torch.device], **config) -> \
             permutation_option=config["negatives_permutation_option"],
         )
     elif config["negative_sampler"] == "hierarchical":
-        negative_sampler = HierarchicalNegativeEdgesBatched(
+        negative_sampler = HierarchicalNegativeEdges(
             edges=taxonomy_edges,
-            negative_ratio=config["negative_ratio"]
+            negative_ratio=config["negative_ratio"],
+            sampling_strategy=config["hierarchical_negative_sampling_strategy"],
+            # cache_dir=config["data_path"] + ".hns",
         )
     else:
         raise NotImplementedError

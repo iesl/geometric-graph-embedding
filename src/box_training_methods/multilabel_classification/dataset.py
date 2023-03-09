@@ -136,10 +136,11 @@ class InstanceLabelsDataset(Dataset):
     instances: Tensor
     labels: Tensor
     label_set: list
-    label_format: str = "one-hot"  # "stochastic?", "padded?", "one-hot"
+    label_format: str = "one-hot"
 
     def __attrs_post_init__(self):
         self._device = self.instances.device
+        self.instance_dim = self.instances.shape[1]
         if self.label_format == "one-hot":
             self._label_encoder = MultiLabelBinarizer()
             self._label_encoder.fit([self.label_set])
@@ -150,7 +151,7 @@ class InstanceLabelsDataset(Dataset):
     def __getitem__(self, idxs: LongTensor) -> LongTensor:
         """
         :param idxs: LongTensor of shape (...,) indicating the index of the examples which to select
-        :return: LongTensor of shape (..., 1 + num_negatives, 2) where the positives are located in [:,0,:]
+        :return: batch_instances of shape (..., ), batch_labels of shape (..., )
         """
         batch_instances, batch_labels = self.instances[idxs], self.one_hot_labels[idxs]
         return batch_instances.to(self.device), batch_labels.to(self.device)
@@ -164,7 +165,6 @@ class InstanceLabelsDataset(Dataset):
 
     def to(self, device: Union[str, torch.device]):
         self._device = device
-        breakpoint()
         self.instances = self.instances.to(device)
         # self.labels = self.labels.to(device)
         return self
