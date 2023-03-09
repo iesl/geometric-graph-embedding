@@ -294,7 +294,7 @@ class MultilabelClassificationTrainLooper:
             tqdm(self.instance_label_dl, desc=f"[{self.name}] Batch", leave=False)
         ):
 
-            instance_batch_in, label_batch_one_hots = instance_label_batch_in
+            instance_batch_in, label_batch_in = instance_label_batch_in
 
             try:
                 label_label_batch_in = next(label_label_iter)
@@ -317,7 +317,7 @@ class MultilabelClassificationTrainLooper:
 
             # compute L_nll
             # TODO generic API for returning box params
-            # TODO scoring: self.scorer(instance_encodings, labels_boxes, label_batch_one_hots)
+            # TODO scoring: self.scorer(instance_encodings, labels_boxes, label_batch_in)
             breakpoint()
 
             if torch.isnan(loss).any():

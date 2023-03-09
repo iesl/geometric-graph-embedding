@@ -14,7 +14,7 @@ from torch import Tensor, LongTensor
 from torch.utils.data import Dataset
 
 from skmultilearn.dataset import load_from_arff
-from sklearn.preprocessing import LabelEncoder, MultiLabelBinarizer
+from sklearn.preprocessing import LabelEncoder
 
 __all__ = [
     "edges_from_hierarchy_edge_list",
@@ -135,29 +135,43 @@ class InstanceLabelsDataset(Dataset):
 
     instances: Tensor
     labels: Tensor
-    label_set: list
-    label_format: str = "one-hot"
+    label_encoder: LabelEncoder  # label set accessable via label_encoder.classes_
 
     def __attrs_post_init__(self):
         self._device = self.instances.device
         self.instance_dim = self.instances.shape[1]
-        if self.label_format == "one-hot":
-            self._label_encoder = MultiLabelBinarizer()
-            self._label_encoder.fit([self.label_set])
-            self.one_hot_labels = torch.tensor(self._label_encoder.transform(self.labels))
-        else:
-            raise NotImplementedError("Only one-hot label encodings currently supported for instances dataloader!")
+        self.labels = self.prune_labels_for_instances()
 
     def __getitem__(self, idxs: LongTensor) -> LongTensor:
         """
         :param idxs: LongTensor of shape (...,) indicating the index of the examples which to select
-        :return: batch_instances of shape (..., ), batch_labels of shape (..., )
+        :return: batch_instances of shape (batch_size, instance_dim), batch_labels of shape (batch_size, num_labels)
         """
-        batch_instances, batch_labels = self.instances[idxs], self.one_hot_labels[idxs]
+        batch_instances, batch_labels = self.instances[idxs], self.labels[idxs]
         return batch_instances.to(self.device), batch_labels.to(self.device)
 
     def __len__(self):
         return len(self.instances)
+
+    def prune_labels_for_instances(self):
+        pruned_labels = []
+        for ls in self.labels:
+            pruned_labels.append(self.prune_labels_for_instance(ls))
+        return pruned_labels
+
+    def prune_labels_for_instance(self, ls):
+        """only retains most granular labels"""
+        pruned_ls = []
+        for i in range(len(ls)):
+            label_i_is_nobodys_parent = True
+            if i < len(ls) - 1:
+                for j in range(i+1, len(ls)):
+                    if f".{ls[j]}.".startswith(f".{ls[i]}."):
+                        label_i_is_nobodys_parent = False
+                        break
+            if label_i_is_nobodys_parent:
+                pruned_ls.append(ls[i])
+        return pruned_ls
 
     @property
     def device(self):

@@ -113,8 +113,8 @@ def setup_training_data(device: Union[str, torch.device], **config) -> \
     hierarchy_edge_list_file = data_dir / "hierarchy.edgelist"
 
     # 1. read label taxonomy into GraphDataset
-    taxonomy_edges, taxonomy_label_encoder = edges_from_hierarchy_edge_list(edge_file=hierarchy_edge_list_file)
-    label_set = taxonomy_label_encoder.classes_
+    taxonomy_edges, label_encoder = edges_from_hierarchy_edge_list(edge_file=hierarchy_edge_list_file)
+    label_set = label_encoder.classes_
     num_labels = len(label_set)
 
     if config["negative_sampler"] == "random":
@@ -154,9 +154,9 @@ def setup_training_data(device: Union[str, torch.device], **config) -> \
     instances_test = torch.tensor([i['x'] for i in data_test], device=device)
     labels_test = [i['labels'] for i in data_test]
 
-    train_dataset = InstanceLabelsDataset(instances=instances_train, labels=labels_train, label_set=label_set)
-    dev_dataset = InstanceLabelsDataset(instances=instances_dev, labels=labels_dev, label_set=label_set)
-    test_dataset = InstanceLabelsDataset(instances=instances_test, labels=labels_test, label_set=label_set)
+    train_dataset = InstanceLabelsDataset(instances=instances_train, labels=labels_train, label_encoder=label_encoder)
+    dev_dataset = InstanceLabelsDataset(instances=instances_dev, labels=labels_dev, label_encoder=label_encoder)
+    test_dataset = InstanceLabelsDataset(instances=instances_test, labels=labels_test, label_encoder=label_encoder)
 
     # TODO update these stats
     # logger.info(f"Number of edges in dataset: {dataset.num_edges:,}")
