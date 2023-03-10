@@ -38,7 +38,7 @@ __all__ = [
 ]
 
 
-def setup_model(num_labels: int, instance_dim: int, device: Union[str, torch.device], **config) -> Tuple[Module, Callable]:
+def setup_model(num_labels: int, instances: torch.Tensor, device: Union[str, torch.device], **config) -> Tuple[Module, Callable]:
     model_type = config["model_type"].lower()
     if model_type == "gumbel_box":
         box_model = BoxMinDeltaSoftplus(
@@ -88,7 +88,7 @@ def setup_model(num_labels: int, instance_dim: int, device: Union[str, torch.dev
     box_model.to(device)
 
     # TODO args from click
-    instance_encoder = InstanceAsPointEncoder(input_dim=instance_dim, hidden_dim=64, output_dim=config["dim"])
+    instance_encoder = InstanceAsPointEncoder(instances=instances, hidden_dim=64, output_dim=config["dim"])
 
     # TODO args from click
     scorer = HardBoxScorer()

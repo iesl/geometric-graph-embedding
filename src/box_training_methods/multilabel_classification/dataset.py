@@ -140,23 +140,26 @@ class InstanceLabelsDataset(Dataset):
     def __attrs_post_init__(self):
         self._device = self.instances.device
         self.instance_dim = self.instances.shape[1]
-        self.labels = self.prune_labels_for_instances()
+        self.labels = self.prune_and_encode_labels_for_instances()
+        self.instance_to_label = []
+        for i, ls in enumerate(self.labels):
+            self.instance_to_label.extend([i, l] for l in ls)
+        self.instance_to_label = torch.tensor(self.instance_to_label)
 
     def __getitem__(self, idxs: LongTensor) -> LongTensor:
         """
         :param idxs: LongTensor of shape (...,) indicating the index of the examples which to select
         :return: batch_instances of shape (batch_size, instance_dim), batch_labels of shape (batch_size, num_labels)
         """
-        batch_instances, batch_labels = self.instances[idxs], self.labels[idxs]
-        return batch_instances.to(self.device), batch_labels.to(self.device)
+        return self.instance_to_label[idxs]
 
     def __len__(self):
         return len(self.instances)
 
-    def prune_labels_for_instances(self):
+    def prune_and_encode_labels_for_instances(self):
         pruned_labels = []
         for ls in self.labels:
-            pruned_labels.append(self.prune_labels_for_instance(ls))
+            pruned_labels.append(self.label_encoder.transform(self.prune_labels_for_instance(ls)))
         return pruned_labels
 
     def prune_labels_for_instance(self, ls):

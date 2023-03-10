@@ -294,7 +294,7 @@ class MultilabelClassificationTrainLooper:
             tqdm(self.instance_label_dl, desc=f"[{self.name}] Batch", leave=False)
         ):
 
-            instance_batch_in, label_batch_in = instance_label_batch_in
+            instance_batch_in, label_batch_in = instance_label_batch_in[:, 0], instance_label_batch_in[:, 1]
 
             try:
                 label_label_batch_in = next(label_label_iter)
