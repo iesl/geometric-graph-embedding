@@ -16,6 +16,7 @@ from torch.utils.data import Dataset, WeightedRandomSampler
 from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence
 
 import networkx as nx
+from scipy.sparse._csr import csr_matrix
 
 from ..enums import PermutationOption
 
@@ -27,6 +28,7 @@ __all__ = [
     "edges_and_num_nodes_from_npz",
     "convert_edges_to_ints",
     "convert_ints_to_edges",
+    "create_positive_edges_from_tails",
     "RandomEdges",
     "RandomNegativeEdges",
     "HierarchicalNegativeEdges",
@@ -179,6 +181,22 @@ def convert_ints_to_edges(ints: LongTensor, num_nodes: int) -> LongTensor:
     return torch.stack(
         (torch.div(ints, num_nodes, rounding_mode="trunc"), ints % num_nodes), dim=-1
     )
+
+
+# TODO figure out whether head or tail resides at position 0
+def create_positive_edges_from_tails(tails: LongTensor, A: csr_matrix) -> LongTensor:
+    """
+
+    :param tails: indices of nodes with shape (batch_size,) whose parents (potentially with >1 multiplicity) must be found and put into edges
+    :param A: sparse adjacency matrix
+    :returns: LongTensor with shape (batch_size+, 2) where [...,0] is the node id of head and [...,1] is the node id of tail
+    """
+    heads, tail_idxs = A[:,tails].nonzero()
+    heads, tail_idxs = LongTensor(heads), LongTensor(tail_idxs)
+    tails = torch.gather(input=tails, dim=0, index=tail_idxs)
+    heads_tails = torch.cat([heads.unsqueeze(-1), tails.unsqueeze(-1)], dim=-1)
+    return heads_tails
+
 
 
 @attr.s(auto_attribs=True)

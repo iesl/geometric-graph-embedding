@@ -21,7 +21,7 @@ from box_training_methods.metrics import *
 ### VISUALIZATION IMPORTS ONLY
 from box_training_methods.visualization.plot_2d_tbox import plot_2d_tbox
 from box_training_methods.models.box import TBox
-from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, HierarchicalNegativeEdges
+from box_training_methods.graph_modeling.dataset import create_positive_edges_from_tails, RandomNegativeEdges, HierarchicalNegativeEdges
 neg_sampler_obj_to_str = {
     RandomNegativeEdges: "random",
     HierarchicalNegativeEdges: "hierarchical"
@@ -294,26 +294,30 @@ class MultilabelClassificationTrainLooper:
             tqdm(self.instance_label_dl, desc=f"[{self.name}] Batch", leave=False)
         ):
 
-            instance_batch_in, label_batch_in = instance_label_batch_in[:, 0], instance_label_batch_in[:, 1]
+            # (batch_size, instance_feat_dim), (batch_size,)
+            instance_batch_in, label_batch_in = instance_label_batch_in
 
-            try:
-                label_label_batch_in = next(label_label_iter)
-            except StopIteration:
-                label_label_iter = iter(self.label_label_dl)
-                label_label_batch_in = next(label_label_iter)
+            # TODO RandomNegativeEdges currently doesn't store adjacency matrix
+            positive_label_label_idxs = create_positive_edges_from_tails(tails=label_batch_in, A=self.label_label_dl.dataset.negative_sampler.A)
+            negative_label_label_idxs = self.label_label_dl.dataset.negative_sampler(positive_label_label_idxs)
+            label_label_batch_in_for_instance = torch.cat([positive_label_label_idxs.unsqueeze(1), negative_label_label_idxs], dim=1)
 
-            # TODO for each (instance_i, label_i), get more label-label info about label_i
-            #  modified GraphDataloader(label_i) -> more edges about label_i
+            # try:
+            #     label_label_batch_in = next(label_label_iter)
+            # except StopIteration:
+            #     label_label_iter = iter(self.label_label_dl)
+            #     label_label_batch_in = next(label_label_iter)
 
             self.opt.zero_grad()
 
-            # compute L_G
-            label_label_batch_out = self.box_model(label_label_batch_in)
-            label_label_loss = self.label_label_loss_func(label_label_batch_out)
-            label_label_loss = label_label_loss.sum(dim=0)
+            # compute L_G for labels related to instance
+            label_label_batch_out_for_instance = self.box_model(label_label_batch_in_for_instance)
+            label_label_loss_for_instance = self.label_label_loss_func(label_label_batch_out_for_instance).sum(dim=0)
 
             # compute instance encoding
             instance_encodings = self.instance_model(instance_batch_in)
+
+            breakpoint()
 
             # compute L_nll
             # TODO generic API for returning box params

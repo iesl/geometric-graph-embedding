@@ -38,7 +38,7 @@ __all__ = [
 ]
 
 
-def setup_model(num_labels: int, instances: torch.Tensor, device: Union[str, torch.device], **config) -> Tuple[Module, Callable]:
+def setup_model(num_labels: int, instance_dim: int, device: Union[str, torch.device], **config) -> Tuple[Module, Callable]:
     model_type = config["model_type"].lower()
     if model_type == "gumbel_box":
         box_model = BoxMinDeltaSoftplus(
@@ -88,7 +88,7 @@ def setup_model(num_labels: int, instances: torch.Tensor, device: Union[str, tor
     box_model.to(device)
 
     # TODO args from click
-    instance_encoder = InstanceAsPointEncoder(instances=instances, hidden_dim=64, output_dim=config["dim"])
+    instance_encoder = InstanceAsPointEncoder(instance_dim=instance_dim, hidden_dim=64, output_dim=config["dim"])
 
     # TODO args from click
     scorer = HardBoxScorer()
@@ -143,20 +143,20 @@ def setup_training_data(device: Union[str, torch.device], **config) -> \
     reader = ARFFReader(num_labels=num_labels)
 
     data_train = list(reader.read_internal(str(data_dir / "train-normalized.arff")))
-    instances_train = torch.tensor([i['x'] for i in data_train], device=device)
+    instance_feats_train = torch.tensor([i['x'] for i in data_train], device=device)
     labels_train = [i['labels'] for i in data_train]
 
     data_dev = list(reader.read_internal(str(data_dir / "dev-normalized.arff")))
-    instances_dev = torch.tensor([i['x'] for i in data_dev], device=device)
+    instance_feats_dev = torch.tensor([i['x'] for i in data_dev], device=device)
     labels_dev = [i['labels'] for i in data_dev]
 
     data_test = list(reader.read_internal(str(data_dir / "test-normalized.arff")))
-    instances_test = torch.tensor([i['x'] for i in data_test], device=device)
+    instance_feats_test = torch.tensor([i['x'] for i in data_test], device=device)
     labels_test = [i['labels'] for i in data_test]
 
-    train_dataset = InstanceLabelsDataset(instances=instances_train, labels=labels_train, label_encoder=label_encoder)
-    dev_dataset = InstanceLabelsDataset(instances=instances_dev, labels=labels_dev, label_encoder=label_encoder)
-    test_dataset = InstanceLabelsDataset(instances=instances_test, labels=labels_test, label_encoder=label_encoder)
+    train_dataset = InstanceLabelsDataset(instance_feats=instance_feats_train, labels=labels_train, label_encoder=label_encoder)
+    dev_dataset = InstanceLabelsDataset(instance_feats=instance_feats_dev, labels=labels_dev, label_encoder=label_encoder)
+    test_dataset = InstanceLabelsDataset(instance_feats=instance_feats_test, labels=labels_test, label_encoder=label_encoder)
 
     # TODO update these stats
     # logger.info(f"Number of edges in dataset: {dataset.num_edges:,}")

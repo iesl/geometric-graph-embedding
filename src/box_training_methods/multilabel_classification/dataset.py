@@ -133,28 +133,35 @@ class InstanceLabelsDataset(Dataset):
     """
     """
 
-    instances: Tensor
+    instance_feats: Tensor
     labels: Tensor
     label_encoder: LabelEncoder  # label set accessable via label_encoder.classes_
 
     def __attrs_post_init__(self):
-        self._device = self.instances.device
-        self.instance_dim = self.instances.shape[1]
+
+        self._device = self.instance_feats.device
+        self.instance_dim = self.instance_feats.shape[1]
         self.labels = self.prune_and_encode_labels_for_instances()
-        self.instance_to_label = []
+        
+        instance_label_pairs = []
         for i, ls in enumerate(self.labels):
-            self.instance_to_label.extend([i, l] for l in ls)
-        self.instance_to_label = torch.tensor(self.instance_to_label)
+            instance_label_pairs.extend([i, l] for l in ls)
+        self.instance_label_pairs = torch.tensor(instance_label_pairs)
+        
+        self.instance_feats = torch.nn.Embedding.from_pretrained(self.instance_feats, freeze=True)
 
     def __getitem__(self, idxs: LongTensor) -> LongTensor:
         """
         :param idxs: LongTensor of shape (...,) indicating the index of the examples which to select
         :return: batch_instances of shape (batch_size, instance_dim), batch_labels of shape (batch_size, num_labels)
         """
-        return self.instance_to_label[idxs]
+        instance_idxs = self.instance_label_pairs[idxs][:, 0]
+        label_idxs = self.instance_label_pairs[idxs][:, 1]
+        instance_feats = self.instance_feats(instance_idxs)
+        return instance_feats, label_idxs
 
     def __len__(self):
-        return len(self.instances)
+        return len(self.labels)
 
     def prune_and_encode_labels_for_instances(self):
         pruned_labels = []
@@ -182,6 +189,6 @@ class InstanceLabelsDataset(Dataset):
 
     def to(self, device: Union[str, torch.device]):
         self._device = device
-        self.instances = self.instances.to(device)
+        self.instance_feats = self.instance_feats.to(device)
         # self.labels = self.labels.to(device)
         return self
