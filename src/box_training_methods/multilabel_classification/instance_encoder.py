@@ -17,12 +17,12 @@ __all__ = [
 
 class InstanceAsPointEncoder(Module):
 
-    def __init__(self, instances: Tensor, hidden_dim: int, output_dim: int):
+    def __init__(self, instance_dim: int, hidden_dim: int, output_dim: int):
         super().__init__()
 
         # TODO instantiate embedding lookup layer with instances
 
-        self.l1 = torch.nn.Linear(instances.shape[1], hidden_dim)
+        self.l1 = torch.nn.Linear(instance_dim, hidden_dim)
         self.l2 = torch.nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x):
