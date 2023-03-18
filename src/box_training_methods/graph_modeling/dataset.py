@@ -7,6 +7,7 @@ from typing import *
 import attr
 import numpy as np
 import pandas as pd
+import pickle
 import torch
 from loguru import logger
 from scipy.sparse import load_npz, csr_matrix
