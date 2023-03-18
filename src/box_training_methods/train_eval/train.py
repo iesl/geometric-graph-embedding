@@ -39,7 +39,8 @@ def training(config: Dict) -> None:
     """
 
     if config["wandb"]:
-        wandb.init(settings=wandb.Settings(start_method="fork"))
+        # wandb.init(settings=wandb.Settings(start_method="fork"))
+        wandb.init(entity="hierarchical-negative-sampling", project="hns")
         wandb.config.update(config, allow_val_change=True)
         config = wandb.config
         run_dir = Path(wandb.run.dir)
