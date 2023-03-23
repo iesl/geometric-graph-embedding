@@ -465,8 +465,11 @@ class HierarchicalNegativeEdges:
             else:
                 raise NotImplementedError
 
+            # Weights can't have row of all zeros, because WeightedRandomSampler will error on torch.multinomial with all zeros
+            # This is why we set the weight for EMB_PAD to be a tiny number instead of 0, in case a node has no other
+            #  negative candidates to sample from.
             node_to_weight = torch.FloatTensor([node_to_weight[k] for k in sorted(list(self.nodes))]).unsqueeze(-1)
-            node_to_weight = torch.cat([node_to_weight, torch.tensor([[0.0]])], dim=0)
+            node_to_weight = torch.cat([node_to_weight, torch.tensor([[1e-9]])], dim=0)
             self.weights = torch.nn.Embedding.from_pretrained(node_to_weight, freeze=True, padding_idx=self.EMB_PAD)
 
         t0 = time()
@@ -482,8 +485,10 @@ class HierarchicalNegativeEdges:
         :return: negative edges, a LongTensor of indices with shape (..., negative_ratio, 2)
         """
 
+        device = positive_edges.device
+
         tails = positive_edges[..., 1]
-        negative_candidates = self.negative_roots[tails].long().to(positive_edges.device)
+        negative_candidates = self.negative_roots[tails].long().to(device)
 
         # Implement a policy that returns all negative candidates w/o repetition.
         # This will require a mask to be used inside TBox forward method.
@@ -503,15 +508,21 @@ class HierarchicalNegativeEdges:
 
         else:
 
-            negative_candidates_weights = self.weights.to(positive_edges.device)(negative_candidates).squeeze()
-            negative_idxs = torch.tensor(list(WeightedRandomSampler(weights=negative_candidates_weights,
-                                                                    num_samples=self.negative_ratio,
-                                                                    replacement=True))).to(positive_edges.device)
+            negative_candidates_weights = self.weights.to(device)(negative_candidates).squeeze()
+            
+            wrs = WeightedRandomSampler(weights=negative_candidates_weights, num_samples=self.negative_ratio, replacement=True)
+            wrs = list(wrs)
+            negative_idxs = torch.tensor(wrs).to(device)
             try:
                 negative_nodes = torch.gather(negative_candidates, -1, negative_idxs)
             except RuntimeError:
                 # FIXME this happens when we have a leftover batch of one instance
                 negative_nodes = torch.gather(negative_candidates, -1, negative_idxs.unsqueeze(dim=0))
+
+            # FIXME for nodes with no HNS candidates, this will result in non-hierarchical negative_edges which may impact training
+            #  fix this with masking
+            negative_nodes[negative_nodes == self.EMB_PAD] = -1
+
             tails = tails.unsqueeze(-1).expand(-1, self.negative_ratio)
             negative_edges = torch.stack([negative_nodes, tails], dim=-1)
             return negative_edges
