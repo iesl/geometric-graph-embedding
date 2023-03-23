@@ -174,7 +174,8 @@ def setup(**config):
             logger.debug(f"After training, will evaluate on full adjacency matrix")
             eval_loopers.append(
                 GraphModelingEvalLooper(
-                    name="Train",  # this is used for logging to describe the dataset, which is the same data as in train
+                    # name="Train",  # this is used for logging to describe the dataset, which is the same data as in train
+                    name="Eval",  # change this to have separate name for HNS experiments which log F1 at every epoch
                     model=model,
                     dl=train_dataloader,
                     batchsize=2 ** config["log_eval_batch_size"],
