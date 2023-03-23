@@ -65,7 +65,7 @@ def main():
                 sweep_id = wandb.sweep(sweep_config, entity="hierarchical-negative-sampling", project="hns")
 
                 with open(f"./hns_wandb_commands.sh", "a+") as f:
-                    f.write(f"sh ../bin/launch_train_sweep.sh hierarchical-negative-sampling/hns/{sweep_id} {partition} 100 \n")
+                    f.write(f"sh ./bin/launch_train_sweep.sh hierarchical-negative-sampling/hns/{sweep_id} {partition} 100 \n")
 
 
 if __name__ == "__main__":
