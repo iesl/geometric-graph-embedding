@@ -78,9 +78,8 @@ class GraphModelingTrainLooper:
                 with torch.enable_grad():
                     self.train_loop(epoch)
 
-                    if epoch % 5 == 0:
-                        for eval_looper in self.eval_loopers:
-                            eval_looper.loop()
+                    for eval_looper in self.eval_loopers:
+                        eval_looper.loop()
 
                     # 2D TBOX VISUALIZATION INFO
                     if isinstance(self.model, TBox):

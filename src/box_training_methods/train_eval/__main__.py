@@ -109,7 +109,7 @@ class IntOrPercent(click.ParamType):
     "--negative_sampler",
     type=str,
     default="random",
-    help="whether to use RandomNegativeEdges or HierarchicalNegativeEdgesBatched"
+    help="whether to use RandomNegativeEdges or HierarchicalNegativeEdges"
 )
 @click.option(
     "--hierarchical_negative_sampling_strategy",
