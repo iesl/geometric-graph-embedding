@@ -316,8 +316,6 @@ class MultilabelClassificationTrainLooper:
             # compute instance encoding
             instance_encodings = self.instance_model(instance_batch_in)
 
-            breakpoint()
-
             # compute L_nll
             # TODO generic API for returning box params
             # TODO scoring: self.scorer(instance_encodings, labels_boxes, label_batch_in)
