@@ -1,0 +1,61 @@
+name: hns_hierarchical_grid_search
+program: scripts/box-training-methods
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - train
+  - ${args}
+  - --task=graph_modeling
+  - --seed=12345
+  - --model_type=tbox
+  - --tbox_temperature_type=global
+  - --box_intersection_temp=0.01
+  - --box_volume_temp=1.0
+  - --log_interval=0.2
+  - --patience=11
+  - --log_batch_size=12
+  - --log_eval_batch_size=17
+  - --epochs=25
+  - --dim=128
+  - --negative_ratio=128
+  - --negative_sampler=hierarchical
+  - --negative_weight=1.0
+  - --learning_rate=0.2
+  - --wandb
+method: grid
+metric:
+  goal: maximize
+  name: '[Train] F1'
+parameters:
+  hierarchical_negative_sampling_strategy:
+    values: ['exact', 'uniform', 'descendants']
+  data_path:
+    values: [
+      'data/graphs13/balanced_tree/branching=10-log_num_nodes=13-transitive_closure=False', 
+      'data/graphs13/balanced_tree/branching=3-log_num_nodes=13-transitive_closure=True', 
+      'data/graphs13/balanced_tree/branching=10-log_num_nodes=13-transitive_closure=True',
+      'data/graphs13/balanced_tree/branching=5-log_num_nodes=13-transitive_closure=False', 
+      'data/graphs13/balanced_tree/branching=2-log_num_nodes=13-transitive_closure=False',
+      'data/graphs13/balanced_tree/branching=5-log_num_nodes=13-transitive_closure=True', 
+      'data/graphs13/balanced_tree/branching=2-log_num_nodes=13-transitive_closure=True', 
+      'data/graphs13/balanced_tree/branching=3-log_num_nodes=13-transitive_closure=False',
+      'data/graphs13/nested_chinese_restaurant_process/alpha=100-log_num_nodes=13-transitive_closure=False',
+      'data/graphs13/nested_chinese_restaurant_process/alpha=500-log_num_nodes=13-transitive_closure=False',
+      'data/graphs13/nested_chinese_restaurant_process/alpha=100-log_num_nodes=13-transitive_closure=True',
+      'data/graphs13/nested_chinese_restaurant_process/alpha=500-log_num_nodes=13-transitive_closure=True',
+      'data/graphs13/nested_chinese_restaurant_process/alpha=10-log_num_nodes=13-transitive_closure=False',
+      'data/graphs13/nested_chinese_restaurant_process/alpha=10-log_num_nodes=13-transitive_closure=True',
+      'data/graphs13/price/c=0.01-gamma=1.0-log_num_nodes=13-m=10-transitive_closure=False',
+      'data/graphs13/price/c=0.1-gamma=1.0-log_num_nodes=13-m=10-transitive_closure=True',
+      'data/graphs13/price/c=0.01-gamma=1.0-log_num_nodes=13-m=10-transitive_closure=True',
+      'data/graphs13/price/c=0.1-gamma=1.0-log_num_nodes=13-m=1-transitive_closure=False',
+      'data/graphs13/price/c=0.01-gamma=1.0-log_num_nodes=13-m=1-transitive_closure=False',
+      'data/graphs13/price/c=0.1-gamma=1.0-log_num_nodes=13-m=1-transitive_closure=True',
+      'data/graphs13/price/c=0.01-gamma=1.0-log_num_nodes=13-m=1-transitive_closure=True',
+      'data/graphs13/price/c=0.1-gamma=1.0-log_num_nodes=13-m=5-transitive_closure=False',
+      'data/graphs13/price/c=0.01-gamma=1.0-log_num_nodes=13-m=5-transitive_closure=False',
+      'data/graphs13/price/c=0.1-gamma=1.0-log_num_nodes=13-m=5-transitive_closure=True',
+      'data/graphs13/price/c=0.01-gamma=1.0-log_num_nodes=13-m=5-transitive_closure=True',
+      'data/graphs13/price/c=0.1-gamma=1.0-log_num_nodes=13-m=10-transitive_closure=False'
+      ]
