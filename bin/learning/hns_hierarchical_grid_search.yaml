@@ -14,7 +14,7 @@ command:
   - --box_volume_temp=1.0
   - --log_interval=0.2
   - --patience=11
-  - --log_batch_size=12
+  - --log_batch_size=10
   - --log_eval_batch_size=17
   - --epochs=25
   - --dim=128
