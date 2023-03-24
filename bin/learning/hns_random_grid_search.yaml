@@ -20,7 +20,7 @@ command:
   - --dim=128
   - --negative_ratio=128
   - --negative_sampler=random
-  - --negative_weight=1.0
+  - --negative_weight=0.9
   - --learning_rate=0.2
   - --wandb
 method: grid
