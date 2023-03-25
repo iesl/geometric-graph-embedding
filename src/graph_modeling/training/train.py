@@ -53,7 +53,7 @@ from .loss import (
     MaxMarginOENegativeSamplingLoss,
 )
 from .. import metric_logger
-from ..models.box import BoxMinDeltaSoftplus, TBox
+from ..models.box import BoxMinDeltaSoftplus, TBox, GBCBox, VBCBox
 from ..models.hyperbolic import (
     Lorentzian,
     LorentzianDistance,
@@ -201,6 +201,24 @@ def setup_model(
                 dim=config["dim"],
                 num_entities=num_nodes,
             ),
+        )
+        loss_func = BCEWithLogsNegativeSamplingLoss(config["negative_weight"])
+    elif model_type == "gbcbox":
+        model = GBCBox(
+            num_nodes,
+            config["dim"],
+            config["num_universe"],
+            volume_temp=config["box_volume_temp"],
+            intersection_temp=config["box_intersection_temp"],
+        )
+        loss_func = BCEWithLogsNegativeSamplingLoss(config["negative_weight"])
+    elif model_type == "vbcbox":
+        model = VBCBox(
+            num_nodes,
+            config["dim"],
+            config["shared_dim"],
+            volume_temp=config["box_volume_temp"],
+            intersection_temp=config["box_intersection_temp"],
         )
         loss_func = BCEWithLogsNegativeSamplingLoss(config["negative_weight"])
     elif model_type == "order_embeddings":

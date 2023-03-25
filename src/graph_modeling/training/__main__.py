@@ -56,6 +56,8 @@ class IntOrPercent(click.ParamType):
     type=click.Choice(
         [
             "tbox",
+            "gbcbox",
+            "vbcbox",
             "gumbel_box",
             "order_embeddings",
             "partial_order_embeddings",
@@ -87,6 +89,12 @@ class IntOrPercent(click.ParamType):
 )
 @click.option(
     "--dim", type=int, default=4, help="dimension for embedding space",
+)
+@click.option(
+    "--num_universe", type=int, default=2, help="number of universes in GBC-Box (unused otherwise)",
+)
+@click.option(
+    "--shared_dim", type=int, default=0, help="dimension for shared space for VBC-Box (unused otherwise)",
 )
 @click.option(
     "--log_batch_size",

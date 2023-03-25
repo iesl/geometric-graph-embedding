@@ -29,6 +29,8 @@ from .. import metric_logger
 __all__ = [
     "BoxMinDeltaSoftplus",
     "TBox",
+    "GBCBox",
+    "VBCBox"
 ]
 
 
@@ -207,3 +209,150 @@ class TBox(Module):
                 overwrite=True,
             )
         return out
+
+
+class GBCBox(Module):
+    def __init__(self, num_entity, dim, num_universe=1.0, volume_temp=1.0, intersection_temp=1.0):
+        super().__init__()
+        self.num_universe = num_universe
+        self.centers = torch.nn.Embedding(num_entity, dim)
+        self.centers.weight.data.uniform_(-0.1, 0.1)
+        self.sidelengths = torch.nn.Embedding(num_entity, dim)
+        self.sidelengths.weight.data.zero_()
+        self.codes = torch.nn.Embedding(self.num_universe, dim)
+        torch.nn.init.uniform_(self.codes.weight, -0.1, 0.1)
+
+        self.volume_temp = volume_temp
+        self.intersection_temp = intersection_temp
+        self.softplus = torch.nn.Softplus(beta=1 / self.volume_temp)
+        self.sigmoid = torch.nn.Sigmoid()
+        self.softplus_const = 2 * self.intersection_temp * 0.57721566490153286060
+
+    def log_volume(self, z, Z):
+        log_vol_per_dim = torch.log(self.softplus(
+            Z - z - self.softplus_const)).unsqueeze(-2)
+
+        if len(log_vol_per_dim.shape) == 4:
+            log_vol_per_subspace = torch.sum(
+                log_vol_per_dim * self.sigmoid(self.codes.weight[None, None, :, :]), -1)  # ..., num_universe
+        if len(log_vol_per_dim.shape) == 3:
+            log_vol_per_subspace = torch.sum(
+                log_vol_per_dim * self.sigmoid(self.codes.weight[None, :, :]), -1)  # ..., num_universe
+
+        return log_vol_per_subspace
+
+    def embedding_lookup(self, idx):
+        center = self.centers(idx)
+        length = self.softplus(self.sidelengths(idx))
+        z = center - length
+        Z = center + length
+        return z, Z
+
+    def gumbel_intersection(self, e1_min, e1_max, e2_min, e2_max):
+        meet_min = self.intersection_temp * torch.logsumexp(
+            torch.stack(
+                [e1_min / self.intersection_temp, e2_min / self.intersection_temp]
+            ),
+            0,
+        )
+        meet_max = -self.intersection_temp * torch.logsumexp(
+            torch.stack(
+                [-e1_max / self.intersection_temp, -e2_max / self.intersection_temp]
+            ),
+            0,
+        )
+        meet_min = torch.max(meet_min, torch.max(e1_min, e2_min))
+        meet_max = torch.min(meet_max, torch.min(e1_max, e2_max))
+        return meet_min, meet_max
+
+    def forward(self, idxs):
+        """
+        :param idxs: Tensor of shape (..., 2) (N, K+1, 2) during training or (N, 2) during testing
+        :return: log prob of shape (..., )
+        """
+        e1_min, e1_max = self.embedding_lookup(idxs[..., 0])
+        e2_min, e2_max = self.embedding_lookup(idxs[..., 1])
+
+        meet_min, meet_max = self.gumbel_intersection(e1_min, e1_max, e2_min, e2_max)
+
+        log_overlap_volume = self.log_volume(meet_min, meet_max)
+        log_rhs_volume = self.log_volume(e2_min, e2_max)
+        log_conditional = log_overlap_volume - log_rhs_volume
+        log_conditional = torch.max(log_conditional, -1)[0]
+
+        return log_conditional
+
+
+class VBCBox(Module):
+    def __init__(self, num_entity, dim, dim_share=0, volume_temp=1.0, intersection_temp=1.0):
+        super().__init__()
+        self.dim_share = dim_share
+        self.centers = torch.nn.Embedding(num_entity, dim)
+        self.centers.weight.data.uniform_(-0.1, 0.1)
+        self.sidelengths = torch.nn.Embedding(num_entity, dim)
+        self.sidelengths.weight.data.zero_()
+        self.codes = torch.nn.Embedding(num_entity, dim - dim_share)
+        #self.ones = torch.nn.Embedding(num_entity, dim_share)
+        #torch.nn.init.ones_(self.ones.weight)
+        #self.ones.weight.requires_grad = False
+
+        self.volume_temp = volume_temp
+        self.intersection_temp = intersection_temp
+        self.softplus = torch.nn.Softplus(beta=1 / self.volume_temp)
+        self.sigmoid = torch.nn.Sigmoid()
+        self.softplus_const = 2 * self.intersection_temp * 0.57721566490153286060
+
+    def log_volume(self, z, Z, c):
+        # a code of near zero will make the corresponding dimension to have small affect on the final volume
+        log_vol = torch.sum(
+            torch.log(self.softplus(Z - z - self.softplus_const)) * c, dim=-1,
+        )
+
+        return log_vol
+
+    def embedding_lookup(self, idx):
+        center = self.centers(idx)
+        length = self.softplus(self.sidelengths(idx))
+        code = self.sigmoid(self.codes(idx))  # ..., dim - dim_share
+        #ones = self.ones(idx)  # ..., dim_share
+        ones = center[...,:self.dim_share].abs() + 1.0
+        ones = ones / ones
+        code = torch.cat([code, ones], axis=-1)
+        z = center - length
+        Z = center + length
+        return z, Z, code
+
+    def gumbel_intersection(self, e1_min, e1_max, e2_min, e2_max):
+        meet_min = self.intersection_temp * torch.logsumexp(
+            torch.stack(
+                [e1_min / self.intersection_temp, e2_min / self.intersection_temp]
+            ),
+            0,
+        )
+        meet_max = -self.intersection_temp * torch.logsumexp(
+            torch.stack(
+                [-e1_max / self.intersection_temp, -e2_max / self.intersection_temp]
+            ),
+            0,
+        )
+        meet_min = torch.max(meet_min, torch.max(e1_min, e2_min))
+        meet_max = torch.min(meet_max, torch.min(e1_max, e2_max))
+        return meet_min, meet_max
+
+    def forward(self, idxs):
+        """
+        :param idxs: Tensor of shape (..., 2) (N, K+1, 2) during training or (N, 2) during testing
+        :return: log prob of shape (..., )
+        """
+        e1_min, e1_max, e1_code = self.embedding_lookup(idxs[..., 0])
+        e2_min, e2_max, e2_code = self.embedding_lookup(idxs[..., 1])
+
+        meet_min, meet_max = self.gumbel_intersection(e1_min, e1_max, e2_min, e2_max)
+
+        code_intersection = e1_code * e2_code
+
+        log_overlap_volume = self.log_volume(meet_min, meet_max, code_intersection)
+        log_rhs_volume = self.log_volume(e2_min, e2_max, code_intersection)
+        log_conditional = log_overlap_volume - log_rhs_volume
+
+        return log_conditional
