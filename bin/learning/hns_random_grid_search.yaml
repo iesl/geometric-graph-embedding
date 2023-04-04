@@ -18,7 +18,7 @@ command:
   - --log_eval_batch_size=17
   - --epochs=25
   - --dim=128
-  - --negative_ratio=128
+  - --negative_ratio=4
   - --negative_sampler=random
   - --negative_weight=0.9
   - --learning_rate=0.2
@@ -26,7 +26,7 @@ command:
 method: grid
 metric:
   goal: maximize
-  name: '[Train] F1'
+  name: '[Eval] F1'
 parameters:
   data_path:
     values: [
