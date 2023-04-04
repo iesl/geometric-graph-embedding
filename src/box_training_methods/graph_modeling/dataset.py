@@ -199,7 +199,6 @@ def create_positive_edges_from_tails(tails: LongTensor, A: csr_matrix) -> LongTe
     return heads_tails
 
 
-
 @attr.s(auto_attribs=True)
 class RandomEdges:
     """
