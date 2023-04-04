@@ -206,7 +206,6 @@ def collate_mesh_fn(batch, tokenizer):
                         return_tensors="pt", padding=True)
     labels = [[m for m in x['meshMajor']] for x in batch]
 
-    breakpoint()
     return inputs, labels
 
 
