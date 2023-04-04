@@ -277,14 +277,14 @@ class MultilabelClassificationTrainLooper:
             self.instance_model.to(previous_device)
 
             # TODO!!!
-            # # evaluate
-            # metrics = []
-            # predictions_coo = []
+            # evaluate
+            metrics = []
+            predictions_coo = []
             # for eval_looper in self.eval_loopers:
             #     metric, prediction_coo = eval_looper.loop()
             #     metrics.append(metric)
             #     predictions_coo.append(prediction_coo)
-            # return metrics, predictions_coo
+            return metrics, predictions_coo
 
     def train_loop(self, epoch: Optional[int] = None):
         """
