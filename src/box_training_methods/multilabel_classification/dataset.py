@@ -2,6 +2,8 @@ import math
 from pathlib import Path
 from time import time
 import pickle
+import ijson
+from itertools import cycle, islice
 from typing import *
 
 import attr
@@ -11,10 +13,12 @@ import torch
 from loguru import logger
 from wcmatch import glob
 from torch import Tensor, LongTensor
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, IterableDataset, DataLoader
 
 from skmultilearn.dataset import load_from_arff
 from sklearn.preprocessing import LabelEncoder
+
+from transformers import AutoTokenizer
 
 __all__ = [
     "edges_from_hierarchy_edge_list",
@@ -192,3 +196,41 @@ class InstanceLabelsDataset(Dataset):
         self.instance_feats = self.instance_feats.to(device)
         # self.labels = self.labels.to(device)
         return self
+
+
+def collate_mesh_fn(batch, tokenizer):
+
+    inputs = tokenizer([x['journal'] + f' {tokenizer.sep_token} ' + 
+                        x['title'] + f' {tokenizer.sep_token} ' + 
+                        x['abstractText'] for x in batch], 
+                        return_tensors="pt", padding=True)
+    labels = [[m for m in x['meshMajor']] for x in batch]
+
+    breakpoint()
+    return inputs, labels
+
+
+@attr.s(auto_attribs=True)
+class BioASQInstanceLabelsDataset(IterableDataset):
+    
+    file_path: str = "/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/mesh/allMesh_2022.json"
+
+    def __attrs_post_init__(self):
+        self.tokenizer = AutoTokenizer.from_pretrained("microsoft/biogpt")
+
+    def parse_file(self, file_path):
+        with open(file_path, encoding='windows-1252', mode='r') as f:
+            for article in ijson.items(f, 'articles.item'):
+                yield article
+
+    def get_stream(self, file_path):
+        return cycle(self.parse_file(file_path))
+
+    def __iter__(self):
+        return self.get_stream(self.file_path)
+
+
+# if __name__ == '__main__':
+#     d = BioASQInstanceLabelsDataset("/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/mesh/allMesh_2022.json")
+#     dl = DataLoader(d, batch_size=4, collate_fn=lambda b: collate_mesh_fn(batch=b, tokenizer=d.tokenizer))
+#     print(next(iter(dl)))
