@@ -268,7 +268,6 @@ class MultilabelClassificationTrainLooper:
         finally:
             self.logger.commit()
 
-            # TODO adapt this to MLC models
             # load in the best models
             previous_device = next(iter(self.box_model.parameters())).device
             self.box_model.load_state_dict(self.save_box_model.best_model_state_dict())
@@ -276,8 +275,8 @@ class MultilabelClassificationTrainLooper:
 
             self.instance_model.load_state_dict(self.save_instance_model.best_model_state_dict())
             self.instance_model.to(previous_device)
-            breakpoint()
 
+            # TODO!!!
             # # evaluate
             # metrics = []
             # predictions_coo = []
@@ -293,8 +292,11 @@ class MultilabelClassificationTrainLooper:
         :return: list of losses per batch
         """
 
+        examples_this_epoch = 0
+        examples_in_single_epoch = len(self.instance_label_dl.dataset)
+        last_time_stamp = time.time()
+        num_batch_passed = 0
         label_label_iter = iter(self.label_label_dl)
-
         for iteration, batch in enumerate(
             tqdm(self.instance_label_dl, desc=f"[{self.name}] Batch", leave=False)
         ):
@@ -314,6 +316,10 @@ class MultilabelClassificationTrainLooper:
             #     label_label_batch_in = next(label_label_iter)
 
             self.opt.zero_grad()
+
+            num_in_batch = instance_batch_in.shape[0]
+            self.looper_metrics["Total Examples"] += num_in_batch
+            examples_this_epoch += num_in_batch
 
             # compute L_G for labels related to instance
             label_label_batch_out = self.box_model(label_label_batch_in)
@@ -335,6 +341,7 @@ class MultilabelClassificationTrainLooper:
                     if torch.isnan(param.grad).any():
                         raise StopLoopingException("NaNs in grad")
 
+            num_batch_passed += 1
             # TODO: Refactor the following
             self.opt.step()
             # If you have a scheduler, keep track of the learning rate
@@ -349,6 +356,36 @@ class MultilabelClassificationTrainLooper:
                         self.looper_metrics[f"Learning Rate (Group {i})"] = param_group[
                             "lr"
                         ]
+
+            # Check performance every self.log_interval number of examples
+            last_log = self.log_interval.last
+
+            if self.log_interval(self.looper_metrics["Total Examples"]):
+                current_time_stamp = time.time()
+                time_spend = (current_time_stamp - last_time_stamp) / num_batch_passed
+                last_time_stamp = current_time_stamp
+                num_batch_passed = 0
+                self.logger.collect({"avg_time_per_batch": time_spend})
+
+                self.logger.collect(self.looper_metrics)
+                mean_loss = sum(self.running_losses) / (
+                    self.looper_metrics["Total Examples"] - last_log
+                )
+                metrics = {"Mean Loss": mean_loss}
+                self.logger.collect(
+                    {
+                        **{
+                            f"[{self.name}] {metric_name}": value
+                            for metric_name, value in metrics.items()
+                        },
+                        "Epoch": epoch + examples_this_epoch / examples_in_single_epoch,
+                    }
+                )
+                self.logger.commit()
+                self.running_losses = []
+                self.update_best_metrics_(metrics)
+                self.save_if_best_(self.best_metrics["Mean Loss"])
+                self.early_stopping(self.best_metrics["Mean Loss"])
 
     def update_best_metrics_(self, metrics: Dict[str, float]) -> None:
         for name, comparison in self.best_metrics_comparison_functions.items():
@@ -367,7 +404,8 @@ class MultilabelClassificationTrainLooper:
 
     def save_if_best_(self, best_metric) -> None:
         if best_metric != self.previous_best:
-            self.save_model(self.model)
+            self.save_box_model(self.box_model)
+            self.save_instance_model(self.instance_model)
             self.previous_best = best_metric
 
 

@@ -76,7 +76,11 @@ def training(config: Dict) -> None:
         train_looper.save_instance_model = instance_model_checkpoint
 
     # TODO standardize what the train_looper returns across tasks - what is predictions_coo?
-    metrics, predictions_coo = train_looper.loop(config["epochs"])
+    if config["task"] == "graph_modeling":
+        metrics, predictions_coo = train_looper.loop(config["epochs"])
+    elif config["task"] == "multilabel_classification":
+        # TODO have yet implement evaluation for MLC
+        train_looper.loop(config["epochs"])
 
     # saving output results
     if config["output_dir"] == None:
