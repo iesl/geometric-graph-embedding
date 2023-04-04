@@ -13,7 +13,9 @@ from box_training_methods import metric_logger
 
 __all__ = [
     "InstanceAsPointEncoder",
+    "InstanceAsBoxEncoder",
 ]
+
 
 class InstanceAsPointEncoder(Module):
 
@@ -35,6 +37,29 @@ class InstanceAsPointEncoder(Module):
 
         """
         h = F.relu(self.l1(x))
-        instance_encoding = F.relu(self.l2(h))
+        instance_point = self.l2(h)
+        return instance_point
 
-        return instance_encoding
+
+class InstanceAsBoxEncoder(InstanceAsPointEncoder):
+
+    def __init__(self, instance_dim: int, hidden_dim: int, output_dim: int):
+        super().__init__(instance_dim, hidden_dim, output_dim)
+        
+        self.delta = torch.tensor(1.0, requires_grad=False)
+
+    def forward(self, x):
+        """
+
+        Args:
+            x: (batch_size, instance_dim)
+
+        Returns:
+
+        """
+
+        instance_min = super().forward(x)
+        instance_max = instance_min + self.delta
+        
+        instance_box = torch.stack([instance_min, -instance_max], dim=-2)
+        return instance_box

@@ -11,6 +11,7 @@ from scipy.sparse import coo_matrix
 from torch.nn import Module
 from torch.utils.data import DataLoader
 from tqdm.autonotebook import trange, tqdm
+from itertools import chain
 
 from pytorch_utils.exceptions import StopLoopingException
 from pytorch_utils.loggers import Logger
@@ -234,7 +235,8 @@ class MultilabelClassificationTrainLooper:
     early_stopping: Callable = lambda z: None
     logger: Logger = attr.ib(factory=Logger)
     summary_func: Callable[Dict] = lambda z: None
-    save_model: Callable[Module] = lambda z: None
+    save_box_model: Callable[Module] = lambda z: None
+    save_instance_model: Callable[Module] = lambda z: None
     log_interval: Optional[Union[IntervalConditional, int]] = attr.ib(
         default=None, converter=IntervalConditional.interval_conditional_converter
     )
@@ -267,11 +269,15 @@ class MultilabelClassificationTrainLooper:
             self.logger.commit()
 
             # TODO adapt this to MLC models
-            # # load in the best model
-            # previous_device = next(iter(self.model.parameters())).device
-            # self.model.load_state_dict(self.save_model.best_model_state_dict())
-            # self.model.to(previous_device)
-            #
+            # load in the best models
+            previous_device = next(iter(self.box_model.parameters())).device
+            self.box_model.load_state_dict(self.save_box_model.best_model_state_dict())
+            self.box_model.to(previous_device)
+
+            self.instance_model.load_state_dict(self.save_instance_model.best_model_state_dict())
+            self.instance_model.to(previous_device)
+            breakpoint()
+
             # # evaluate
             # metrics = []
             # predictions_coo = []
@@ -289,17 +295,17 @@ class MultilabelClassificationTrainLooper:
 
         label_label_iter = iter(self.label_label_dl)
 
-        for iteration, instance_label_batch_in in enumerate(
+        for iteration, batch in enumerate(
             tqdm(self.instance_label_dl, desc=f"[{self.name}] Batch", leave=False)
         ):
 
             # (batch_size, instance_feat_dim), (batch_size,)
-            instance_batch_in, label_batch_in = instance_label_batch_in
+            instance_batch_in, label_batch_in = batch
 
             # TODO RandomNegativeEdges currently doesn't store adjacency matrix
-            positive_label_label_idxs = create_positive_edges_from_tails(tails=label_batch_in, A=self.label_label_dl.dataset.negative_sampler.A)
+            positive_label_label_idxs = create_positive_edges_from_tails(tails=label_batch_in.cpu(), A=self.label_label_dl.dataset.negative_sampler.A)  # FIXME only HierarchicalNegativeEdges has A attribute, not RandomNegativeEdges
             negative_label_label_idxs = self.label_label_dl.dataset.negative_sampler(positive_label_label_idxs)
-            label_label_batch_in_for_instance = torch.cat([positive_label_label_idxs.unsqueeze(1), negative_label_label_idxs], dim=1)
+            label_label_batch_in = torch.cat([positive_label_label_idxs.unsqueeze(1), negative_label_label_idxs], dim=1)
 
             # try:
             #     label_label_batch_in = next(label_label_iter)
@@ -310,23 +316,21 @@ class MultilabelClassificationTrainLooper:
             self.opt.zero_grad()
 
             # compute L_G for labels related to instance
-            label_label_batch_out_for_instance = self.box_model(label_label_batch_in_for_instance)
-            label_label_loss_for_instance = self.label_label_loss_func(label_label_batch_out_for_instance).sum(dim=0)
+            label_label_batch_out = self.box_model(label_label_batch_in)
+            label_label_loss = self.label_label_loss_func(label_label_batch_out).sum(dim=0)
 
             # compute instance encoding
-            instance_encodings = self.instance_model(instance_batch_in)
+            instance_boxes = self.instance_model(instance_batch_in)     # (bsz, 2 [-/+], dim)
+            instance_label_loss = self.box_model.forward(idxs=label_batch_in, instances=instance_boxes).sum(dim=0)
 
-            # compute L_nll
-            # TODO generic API for returning box params
-            # TODO scoring: self.scorer(instance_encodings, labels_boxes, label_batch_in)
-            breakpoint()
+            loss = label_label_loss + instance_label_loss
 
             if torch.isnan(loss).any():
                 raise StopLoopingException("NaNs in loss")
             self.running_losses.append(loss.detach().item())
             loss.backward()
 
-            for param in self.model.parameters():
+            for param in chain(self.box_model.parameters(), self.instance_model.parameters()):
                 if param.grad is not None:
                     if torch.isnan(param.grad).any():
                         raise StopLoopingException("NaNs in grad")

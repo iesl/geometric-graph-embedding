@@ -52,9 +52,7 @@ def training(config: Dict) -> None:
     torch.manual_seed(config["seed"])
     random.seed(config["seed"])
 
-    # TODO setup imports task-specific setup methods located within each task's train_eval.py
     models, train_looper = setup(**config)
-    # TODO dataset and dataloader aren't used in this function. Have setup(**config) return just model, train_looper?
 
     if config["wandb"]:
         metric_logger.metric_logger = WandBLogger()
@@ -67,11 +65,15 @@ def training(config: Dict) -> None:
     for eval_looper in train_looper.eval_loopers:
         eval_looper.logger = train_looper.logger
 
-    model_checkpoint = ModelCheckpoint(run_dir)
-    if isinstance(train_looper, GraphModelingTrainLooper) or \
-            isinstance(train_looper, MultilabelClassificationTrainLooper):
-        logger.debug("Will save best model in RAM (but not on disk) for evaluation")
+    logger.debug("Will save best model in RAM (but not on disk) for evaluation")
+    if config["task"] == "graph_modeling":
+        model_checkpoint = ModelCheckpoint(run_dir)
         train_looper.save_model = model_checkpoint
+    elif config["task"] == "multilabel_classification":
+        box_model_checkpoint = ModelCheckpoint(run_dir, "learned_box_model.pt")
+        instance_model_checkpoint = ModelCheckpoint(run_dir, "learned_instance_model.pt")
+        train_looper.save_box_model = box_model_checkpoint
+        train_looper.save_instance_model = instance_model_checkpoint
 
     # TODO standardize what the train_looper returns across tasks - what is predictions_coo?
     metrics, predictions_coo = train_looper.loop(config["epochs"])
@@ -95,7 +97,11 @@ def training(config: Dict) -> None:
         f.write(json.dumps(metrics))
 
     if config["save_model"]:
-        model_checkpoint.save_to_disk(None)
+        if config["task"] == "graph_modeling":
+            model_checkpoint.save_to_disk(None)
+        elif config["task"] == "multilabel_classification":
+            box_model_checkpoint.save_to_disk(None)
+            instance_model_checkpoint.save_to_disk(None)
 
     # TODO standardize saving predictions for predictions from all tasks (graphs, labels, etc.)
     if config["save_prediction"]:

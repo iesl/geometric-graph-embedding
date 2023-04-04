@@ -144,17 +144,20 @@ class TBox(Module):
         self.hard_box = hard_box
 
     def forward(
-        self, idxs: LongTensor
+        self, idxs: LongTensor, instances: Optional[LongTensor] = None
     ) -> Union[Tuple[Tensor, Dict[str, Tensor]], Tensor]:
         """
         A version of the forward pass that is slightly more performant.
         :param idxs: Tensor of shape (..., 2) indicating edges, i.e. [...,0] -> [..., 1] is an edge
+        :param instances: instance boxes of shape (..., 2 (min/-max), dim)
         :returns: FloatTensor representing the energy of the edges in `idxs`
         """
-        boxes = self.boxes[idxs]  # shape (..., 2, 2 (min/-max), dim)
+        boxes = self.boxes[idxs]  # shape (..., 2, 2 (min/-max), dim) or (..., 2 (min/-max), dim) if instances are provided
 
         if self.hard_box and self.training:
             return boxes
+        if instances is not None:
+            boxes = torch.stack([boxes, instances], dim=-3)  # labels -> instances
 
         intersection_temp = self.intersection_temp(idxs).mean(dim=-3, keepdim=True)
         volume_temp = self.volume_temp(idxs).mean(dim=-3, keepdim=False)

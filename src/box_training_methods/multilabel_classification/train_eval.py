@@ -27,7 +27,7 @@ from box_training_methods.graph_modeling.loss import (
     MaxMarginOENegativeSamplingLoss,
     PushApartPullTogetherLoss,
 )
-from box_training_methods.multilabel_classification.instance_encoder import InstanceAsPointEncoder#, InstanceAsBoxEncoder
+from box_training_methods.multilabel_classification.instance_encoder import InstanceAsPointEncoder, InstanceAsBoxEncoder
 from box_training_methods.multilabel_classification.instance_scorers.instance_as_box_scorers.hard_box_scorer import HardBoxScorer
 
 
@@ -88,7 +88,8 @@ def setup_model(num_labels: int, instance_dim: int, device: Union[str, torch.dev
     box_model.to(device)
 
     # TODO args from click
-    instance_encoder = InstanceAsPointEncoder(instance_dim=instance_dim, hidden_dim=64, output_dim=config["dim"])
+    instance_encoder = InstanceAsBoxEncoder(instance_dim=instance_dim, hidden_dim=64, output_dim=config["dim"])
+    instance_encoder.to(device)
 
     # TODO args from click
     scorer = HardBoxScorer()

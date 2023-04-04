@@ -155,8 +155,8 @@ class InstanceLabelsDataset(Dataset):
         :param idxs: LongTensor of shape (...,) indicating the index of the examples which to select
         :return: batch_instances of shape (batch_size, instance_dim), batch_labels of shape (batch_size, num_labels)
         """
-        instance_idxs = self.instance_label_pairs[idxs][:, 0]
-        label_idxs = self.instance_label_pairs[idxs][:, 1]
+        instance_idxs = self.instance_label_pairs[idxs][:, 0].to(self._device)
+        label_idxs = self.instance_label_pairs[idxs][:, 1].to(self._device)
         instance_feats = self.instance_feats(instance_idxs)
         return instance_feats, label_idxs
 
