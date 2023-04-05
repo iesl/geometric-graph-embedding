@@ -1,4 +1,4 @@
-# Graph Modeling
+# Box Training Methods
 This repository contains code which accompanies the paper [Capacity and Bias of Learned Geometric Embeddings for Directed Graphs (Boratko et al. 2021)](https://proceedings.neurips.cc/paper/2021/hash/88d25099b103efd638163ecb40a55589-Abstract.html).
 
 This code includes implementations of many geometric embedding methods:
@@ -25,8 +25,8 @@ git clone <repo-url> --recurse-submodules
 After cloning the repo, you should create an environment and install pytorch. For example,
 
 ```bash
-conda create -n graph-modeling python=3.8
-conda activate graph-modeling
+conda create -n box-training-methods python=3.8
+conda activate box-training-methods
 conda install -c pytorch cudatoolkit=11.3 pytorch
 ```
 
@@ -36,20 +36,30 @@ You can then run `make all` to install the remaining modules and their dependenc
 
 ## Usage
 
-This module provides a command line interface available with `graph_modeling`.
+This module provides a command line interface available with `box_training_methods`.
 
-Run `graph_modeling --help` to see available options.
+Example command for `graph_modeling` task:
+```
+box_training_methods train --task graph_modeling \
+--data_path ./data/graphs/balanced_tree/branching=2-log_num_nodes=12-transitive_closure=False/ \
+--model_type tbox --dim 8 --epochs 25 --negative_sampler hierarchical --hierarchical_negative_sampling_strategy exact
+```
 
-### Generate Graphs
-To generate a graph, run `graph_modeling generate <graph_type>`, eg. `graph_modeling generate scale-free-network`.
+Example command for `multilabel_classification` task, which includes the MLC datasets used in [Patel et al. 2022](https://par.nsf.gov/servlets/purl/10392233)
+```
+box_training_methods train --task multilabel_classification \
+--data_path ./data/box-mlc-iclr-2022-data/expr_FUN/ \
+--model_type hard_box --dim 8 --epochs 25 --negative_sampler hierarchical --hierarchical_negative_sampling_strategy exact
+```
 
-- `graph_modeling generate --help` provides a list of available graphs that can be generated
-- `graph_modeling generate <graph_type> --help` provides a list of parameters for generation
-
-By default, graphs will be output in `data/graphs`, using a subfolder for their graph type and parameter settings. You can override this with the `--outdir` parameter.
-
-### Train Graph Representations
-You can train graph representations using the `graph_modeling train` command, run `graph_modeling train --help` to see available options. The only required parameter is `--data_path`, which specifies either a specific graph file or a folder, in which case it will pick a graph in the folder uniformly randomly. The `--model` option allows for a selection of different embedding models. Most other options apply to every model (eg. `--dim`) or training in general (eg. `--log_batch_size`). Model-specific options are prefaced with the model name (eg. `--box_intersection_temp`). Please see the help text for the options for more details, and submit an issue if anything is unclear.
+Example command for `bioasq` task (BioASQ Task A):
+```
+box_training_methods train --task bioasq \
+--data_path ./data/mesh/allMeSH_2020.json \
+--mesh_parent_child_mapping_path ./data/mesh/MeSH_parent_child_mapping_2020.txt \
+--mesh_name_id_mapping_path ./data/mesh/MeSH_name_id_mapping_2020.txt \
+--model_type tbox --dim 8 --epochs 25 --negative_sampler hierarchical --hierarchical_negative_sampling_strategy exact
+```
 
 ## Citation
 If you found the code contained in this repository helpful in your research, please cite the following paper:
