@@ -61,8 +61,8 @@ box_training_methods train --task bioasq \
 --model_type tbox --dim 8 --epochs 25 --negative_sampler hierarchical --hierarchical_negative_sampling_strategy exact
 ```
 
-## Citation
-If you found the code contained in this repository helpful in your research, please cite the following paper:
+## Citations
+If you found the code contained in this repository helpful in your research, please cite the following papers:
 
 ```
 @inproceedings{boratko2021capacity,
@@ -70,6 +70,12 @@ If you found the code contained in this repository helpful in your research, ple
   author={Boratko, Michael and Zhang, Dongxu and Monath, Nicholas and Vilnis, Luke and Clarkson, Kenneth L and McCallum, Andrew},
   booktitle={Thirty-Fifth Conference on Neural Information Processing Systems},
   year={2021}
+}
+@article{patel2022modeling,
+  title={Modeling label space interactions in multi-label classification using box embeddings},
+  author={Patel, Dhruvesh and Dangati, Pavitra and Lee, Jay-Yoon and Boratko, Michael and McCallum, Andrew},
+  journal={ICLR 2022 Poster},
+  year={2022}
 }
 ```
 
