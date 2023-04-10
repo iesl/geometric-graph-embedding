@@ -33,7 +33,7 @@ class IntOrPercent(click.ParamType):
 @click.command(context_settings=dict(show_default=True),)
 @click.option(
     "--task",
-    type=click.Choice(["graph_modeling", "multilabel_classification"], case_sensitive=False),
+    type=click.Choice(["graph_modeling", "multilabel_classification", "bioasq"], case_sensitive=False),
     help="task to train on",
     required=True
 )
@@ -42,6 +42,16 @@ class IntOrPercent(click.ParamType):
     type=click.Path(),
     help="directory or file with data (eg. data/graph/some_tree)",
     required=True,
+)
+@click.option(
+    "--mesh_parent_child_mapping_path",
+    type=click.Path(),
+    help="parent-child mapping text file, e.g. 'MeSH_parent_child_mapping_2020.txt'",
+)
+@click.option(
+    "--mesh_name_id_mapping_path",
+    type=click.Path(),
+    help="MeSH name-id mapping text file, e.g. 'MeSH_name_id_mapping_2020.txt'",
 )
 @click.option(
     "--model_type",

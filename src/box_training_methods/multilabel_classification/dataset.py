@@ -17,6 +17,7 @@ from torch.utils.data import Dataset, IterableDataset, DataLoader
 
 from skmultilearn.dataset import load_from_arff
 from sklearn.preprocessing import LabelEncoder
+import rdflib
 
 from transformers import AutoTokenizer
 
@@ -24,22 +25,26 @@ __all__ = [
     "edges_from_hierarchy_edge_list",
     "ARFFReader",
     "InstanceLabelsDataset",
+    "collate_mesh_fn",
+    "BioASQInstanceLabelsDataset",
 ]
 
 
-def edges_from_hierarchy_edge_list(edge_file: Union[Path, str]) -> Tuple[LongTensor, LabelEncoder]:
+def edges_from_hierarchy_edge_list(edge_file: Union[Path, str], mesh=False) -> Tuple[LongTensor, LabelEncoder]:
     """
     Loads edges from a given tsv file into a PyTorch LongTensor.
     Meant for importing data where each edge appears as a line in the file, with
         <child_id>\t<parent_id>\t{}
 
     :param edge_file: Path of dataset's hierarchy{_tc}.edge_list
+    :param mesh: implies <child_id>\t<parent_id>, as for "MeSH_parent_child_mapping_2020.txt"
     :returns: PyTorch LongTensor of edges with shape (num_edges, 2), LabelEncoder that numerized labels
     """
     start = time()
     logger.info(f"Loading edges from {edge_file}...")
     edges = pd.read_csv(edge_file, sep=" ", header=None).to_numpy()[:, :2]  # ignore line-final "{}"
-    # edges[:, [0, 1]] = edges[:, [1, 0]]  # (child, parent) -> (parent, child)
+    if mesh:
+        edges[:, [0, 1]] = edges[:, [1, 0]]  # (child, parent) -> (parent, child)
     le = LabelEncoder()
     edges = torch.tensor(le.fit_transform(edges.flatten()).reshape((-1,2)))
     logger.info(f"Loading complete, took {time() - start:0.1f} seconds")
@@ -213,6 +218,8 @@ def collate_mesh_fn(batch, tokenizer):
 class BioASQInstanceLabelsDataset(IterableDataset):
     
     file_path: str = "/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/mesh/allMesh_2022.json"
+    parent_child_mapping_path: str = "/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/mesh/MeSH_parent_child_mapping_2020.txt"
+    name_id_mapping_path: str = "/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/mesh/MeSH_name_id_mapping_2020.txt"
 
     def __attrs_post_init__(self):
         self.tokenizer = AutoTokenizer.from_pretrained("microsoft/biogpt")
@@ -227,9 +234,3 @@ class BioASQInstanceLabelsDataset(IterableDataset):
 
     def __iter__(self):
         return self.get_stream(self.file_path)
-
-
-# if __name__ == '__main__':
-#     d = BioASQInstanceLabelsDataset("/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/mesh/allMesh_2022.json")
-#     dl = DataLoader(d, batch_size=4, collate_fn=lambda b: collate_mesh_fn(batch=b, tokenizer=d.tokenizer))
-#     print(next(iter(dl)))

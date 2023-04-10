@@ -9,7 +9,7 @@ import torch
 from torch.nn import Module
 from pytorch_utils import TensorDataLoader, cuda_if_available
 
-from .dataset import edges_from_hierarchy_edge_list, ARFFReader, InstanceLabelsDataset
+from .dataset import edges_from_hierarchy_edge_list, ARFFReader, InstanceLabelsDataset, BioASQInstanceLabelsDataset
 from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, \
     HierarchicalNegativeEdges, GraphDataset
 
@@ -171,3 +171,47 @@ def setup_training_data(device: Union[str, torch.device], **config) -> \
     # logger.debug(f"Total time spent loading data: {time() - start:0.1f} seconds")
     #
     return taxonomy_dataset, train_dataset, dev_dataset, test_dataset
+
+
+def setup_mesh_training_data(device: Union[str, torch.device], **config):
+    
+    start = time()
+    bioasq_path = Path(config["data_path"])
+    mesh_parent_child_path = Path(config["mesh_parent_child_mapping_path"])
+    mesh_name_id_path = Path(config["mesh_name_id_mapping_path"])
+
+    # 1. read label taxonomy
+    mesh_edges, label_encoder = edges_from_hierarchy_edge_list(edge_file=mesh_parent_child_path, mesh=True)
+    label_set = label_encoder.classes_
+    num_labels = len(label_set)
+
+    if config["negative_sampler"] == "random":
+        negative_sampler = RandomNegativeEdges(
+            num_nodes=num_labels,
+            negative_ratio=config["negative_ratio"],
+            avoid_edges=None,  # TODO understand the functionality in @mboratko's code
+            device=device,
+            permutation_option=config["negatives_permutation_option"],
+        )
+    elif config["negative_sampler"] == "hierarchical":
+        negative_sampler = HierarchicalNegativeEdges(
+            edges=taxonomy_edges,
+            negative_ratio=config["negative_ratio"],
+            sampling_strategy=config["hierarchical_negative_sampling_strategy"],
+            # cache_dir=config["data_path"] + ".hns",
+        )
+    else:
+        raise NotImplementedError
+
+    mesh_dataset = GraphDataset(
+        mesh_edges, num_nodes=num_labels, negative_sampler=negative_sampler
+    )
+
+    # 2. instance-labels
+    bioasq_dataset = BioASQInstanceLabelsDataset(
+        file_path=bioasq_path,
+        parent_child_mapping_path=mesh_parent_child_path
+        name_id_mapping_path=mesh_name_id_path
+    )
+    
+    return mesh_dataset, bioasq_dataset

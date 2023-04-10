@@ -69,7 +69,7 @@ def training(config: Dict) -> None:
     if config["task"] == "graph_modeling":
         model_checkpoint = ModelCheckpoint(run_dir)
         train_looper.save_model = model_checkpoint
-    elif config["task"] == "multilabel_classification":
+    elif config["task"] in {"multilabel_classification", "bioasq"}:
         box_model_checkpoint = ModelCheckpoint(run_dir, "learned_box_model.pt")
         instance_model_checkpoint = ModelCheckpoint(run_dir, "learned_instance_model.pt")
         train_looper.save_box_model = box_model_checkpoint
@@ -100,7 +100,7 @@ def training(config: Dict) -> None:
         breakpoint()
         if config["task"] == "graph_modeling":
             model_checkpoint.save_to_disk(None)
-        elif config["task"] == "multilabel_classification":
+        elif config["task"] in {"multilabel_classification", "bioasq"}:
             box_model_checkpoint.save_to_disk(None)
             instance_model_checkpoint.save_to_disk(None)
 
@@ -148,6 +148,8 @@ def setup(**config):
         train_dataloader = TensorDataLoader(train_dataset, batch_size=2 ** config["log_batch_size"], shuffle=True)
         dev_dataloader = TensorDataLoader(dev_dataset, batch_size=2 ** config["log_batch_size"], shuffle=False)
         test_dataloader = TensorDataLoader(test_dataset, batch_size=2 ** config["log_batch_size"], shuffle=False)
+    elif config["task"] == "bioasq":
+        taxonomy_dataset, train_dataset, test_dataset = task_train_eval.setup_mesh_training_data(device, **config)
 
     if isinstance(config["log_interval"], float):
         config["log_interval"] = math.ceil(len(train_dataset) * config["log_interval"])

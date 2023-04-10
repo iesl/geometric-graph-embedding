@@ -326,10 +326,15 @@ class MultilabelClassificationTrainLooper:
             label_label_loss = self.label_label_loss_func(label_label_batch_out).sum(dim=0)
 
             # compute instance encoding
+            # TODO need to tailor loss function to instance-label without negative samples
+            # TODO pass in padding mask for exact hierarchical negative sampling
             instance_boxes = self.instance_model(instance_batch_in)     # (bsz, 2 [-/+], dim)
-            instance_label_loss = self.box_model.forward(idxs=label_batch_in, instances=instance_boxes).sum(dim=0)
+            instance_label_batch_out = self.box_model.forward(idxs=label_batch_in, instances=instance_boxes)
+            
+            # FIXME currently the loss fn expects a specified shape with negatives
+            # instance_label_loss = self.label_label_loss_func(instance_label_batch_out).sum(dim=0)
 
-            loss = label_label_loss + instance_label_loss
+            loss = label_label_loss # + instance_label_loss
 
             if torch.isnan(loss).any():
                 raise StopLoopingException("NaNs in loss")
