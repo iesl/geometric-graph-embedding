@@ -9,6 +9,7 @@ from typing import *
 import attr
 import numpy as np
 import pandas as pd
+import networkx as nx
 import torch
 from loguru import logger
 from wcmatch import glob
@@ -17,12 +18,12 @@ from torch.utils.data import Dataset, IterableDataset, DataLoader
 
 from skmultilearn.dataset import load_from_arff
 from sklearn.preprocessing import LabelEncoder
-import rdflib
 
 from transformers import AutoTokenizer
 
 __all__ = [
     "edges_from_hierarchy_edge_list",
+    "name_id_mapping_from_file",
     "ARFFReader",
     "InstanceLabelsDataset",
     "collate_mesh_fn",
@@ -30,25 +31,32 @@ __all__ = [
 ]
 
 
-def edges_from_hierarchy_edge_list(edge_file: Union[Path, str], mesh=False) -> Tuple[LongTensor, LabelEncoder]:
+def edges_from_hierarchy_edge_list(edge_file: Union[Path, str] = "/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/mesh/MeSH_parent_child_mapping_2020.txt", mesh=False) -> Tuple[LongTensor, LabelEncoder]:
     """
     Loads edges from a given tsv file into a PyTorch LongTensor.
     Meant for importing data where each edge appears as a line in the file, with
         <child_id>\t<parent_id>\t{}
 
     :param edge_file: Path of dataset's hierarchy{_tc}.edge_list
-    :param mesh: implies <child_id>\t<parent_id>, as for "MeSH_parent_child_mapping_2020.txt"
+    :param mesh: implies <parent_id>\t<child_id>, as for "MeSH_parent_child_mapping_2020.txt"
     :returns: PyTorch LongTensor of edges with shape (num_edges, 2), LabelEncoder that numerized labels
     """
     start = time()
     logger.info(f"Loading edges from {edge_file}...")
     edges = pd.read_csv(edge_file, sep=" ", header=None).to_numpy()[:, :2]  # ignore line-final "{}"
     if mesh:
-        edges[:, [0, 1]] = edges[:, [1, 0]]  # (child, parent) -> (parent, child)
+        edges[:, [0, 1]] = edges[:, [1, 0]]  # (parent, child) -> (child, parent)
     le = LabelEncoder()
     edges = torch.tensor(le.fit_transform(edges.flatten()).reshape((-1,2)))
     logger.info(f"Loading complete, took {time() - start:0.1f} seconds")
     return edges, le
+
+
+def name_id_mapping_from_file(name_id_file: Union[Path, str] = "/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/mesh/MeSH_name_id_mapping_2020.txt") -> Dict:
+    name_id = pd.read_csv(name_id_file, sep="=", header=None)
+    name_id = dict(zip(name_id[0], name_id[1]))
+    id_name = {i:n for n,i in name_id.items()}
+    return name_id, id_name
 
 
 # https://github.com/iesl/box-mlc-iclr-2022/blob/main/box_mlc/dataset_readers/arff_reader.py
@@ -223,6 +231,9 @@ class BioASQInstanceLabelsDataset(IterableDataset):
 
     def __attrs_post_init__(self):
         self.tokenizer = AutoTokenizer.from_pretrained("microsoft/biogpt")
+        self.edges, self.le = edges_from_hierarchy_edge_list(edge_file=self.parent_child_mapping_path, mesh=True)
+        self.name_id, self.id_name = name_id_mapping_from_file(name_id_file=self.name_id_mapping_path)
+        self.G = nx.DiGraph(self.edges[:, [1, 0]].tolist())  # reverse to parent-child format for DiGraph
 
     def parse_file(self, file_path):
         with open(file_path, encoding='windows-1252', mode='r') as f:
@@ -234,3 +245,39 @@ class BioASQInstanceLabelsDataset(IterableDataset):
 
     def __iter__(self):
         return self.get_stream(self.file_path)
+
+
+# def mesh_leaf_label_stats(bioasq: BioASQInstanceLabelsDataset):
+#     bioasq_iter = iter(bioasq)
+#     leaves = {n for n in bioasq.G.nodes if bioasq.G.out_degree(n) == 0}
+#     leaf_label_counts = []
+#     for i in range(1000):
+#         label_names = next(bioasq_iter)['meshMajor']
+#         print(label_names)
+#         try:
+#             label_ids = [bioasq.name_id[l] for l in label_names]
+#         except KeyError:
+#             continue
+#         labels = bioasq.le.transform(label_ids)
+#         in_degrees = [bioasq.G.in_degree(l) for l in labels]
+#         out_degrees = [bioasq.G.out_degree(l) for l in labels]
+#         print("label in_degree:", in_degrees)
+#         print("label out_degree:", out_degrees)                        
+#         leaf_label_count = 0
+#         for l in labels:
+#             if l in leaves:
+#                 leaf_label_count += 1
+#         leaf_label_counts.append(leaf_label_count)
+#         print(f"# leaf labels: {str(leaf_label_count)}")
+#     leaf_label_counts = np.array(leaf_label_counts)
+#     print(f"min: {str(np.min(leaf_label_counts))}")
+#     print(f"max: {str(np.max(leaf_label_counts))}")
+#     print(f"mean: {str(np.mean(leaf_label_counts))}")
+#     print(f"median: {str(np.median(leaf_label_counts))}")
+#     print(f"std: {str(np.std(leaf_label_counts))}")
+#     breakpoint()
+
+
+# if __name__ == "__main__":
+#     bioasq = BioASQInstanceLabelsDataset()
+#     mesh_leaf_label_stats(bioasq)
