@@ -41,7 +41,7 @@ This module provides a command line interface available with `box_training_metho
 Example command for `graph_modeling` task:
 ```
 box_training_methods train --task graph_modeling \
---data_path ./data/graphs/balanced_tree/branching=2-log_num_nodes=12-transitive_closure=False/ \
+--data_path ./data/graphs13/balanced_tree/branching\=10-log_num_nodes\=13-transitive_closure\=True/ \
 --model_type tbox --dim 8 --epochs 25 --negative_sampler hierarchical --hierarchical_negative_sampling_strategy exact
 ```
 
