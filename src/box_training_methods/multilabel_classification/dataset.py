@@ -247,37 +247,37 @@ class BioASQInstanceLabelsDataset(IterableDataset):
         return self.get_stream(self.file_path)
 
 
-# def mesh_leaf_label_stats(bioasq: BioASQInstanceLabelsDataset):
-#     bioasq_iter = iter(bioasq)
-#     leaves = {n for n in bioasq.G.nodes if bioasq.G.out_degree(n) == 0}
-#     leaf_label_counts = []
-#     for i in range(1000):
-#         label_names = next(bioasq_iter)['meshMajor']
-#         print(label_names)
-#         try:
-#             label_ids = [bioasq.name_id[l] for l in label_names]
-#         except KeyError:
-#             continue
-#         labels = bioasq.le.transform(label_ids)
-#         in_degrees = [bioasq.G.in_degree(l) for l in labels]
-#         out_degrees = [bioasq.G.out_degree(l) for l in labels]
-#         print("label in_degree:", in_degrees)
-#         print("label out_degree:", out_degrees)                        
-#         leaf_label_count = 0
-#         for l in labels:
-#             if l in leaves:
-#                 leaf_label_count += 1
-#         leaf_label_counts.append(leaf_label_count)
-#         print(f"# leaf labels: {str(leaf_label_count)}")
-#     leaf_label_counts = np.array(leaf_label_counts)
-#     print(f"min: {str(np.min(leaf_label_counts))}")
-#     print(f"max: {str(np.max(leaf_label_counts))}")
-#     print(f"mean: {str(np.mean(leaf_label_counts))}")
-#     print(f"median: {str(np.median(leaf_label_counts))}")
-#     print(f"std: {str(np.std(leaf_label_counts))}")
-#     breakpoint()
+def mesh_leaf_label_stats(bioasq: BioASQInstanceLabelsDataset):
+    bioasq_iter = iter(bioasq)
+    leaves = {n for n in bioasq.G.nodes if bioasq.G.out_degree(n) == 0}
+    leaf_label_counts = []
+    for i in range(10):
+        label_names = next(bioasq_iter)['meshMajor']
+        print(label_names)
+        try:
+            label_ids = [bioasq.name_id[l] for l in label_names]
+        except KeyError:
+            continue
+        labels = bioasq.le.transform(label_ids)
+        in_degrees = [bioasq.G.in_degree(l) for l in labels]
+        out_degrees = [bioasq.G.out_degree(l) for l in labels]
+        print("label in_degree:", in_degrees)
+        print("label out_degree:", out_degrees)                        
+        leaf_label_count = 0
+        for l in labels:
+            if l in leaves:
+                leaf_label_count += 1
+        leaf_label_counts.append(leaf_label_count)
+        print(f"# leaf labels: {str(leaf_label_count)}")
+    leaf_label_counts = np.array(leaf_label_counts)
+    print(f"min: {str(np.min(leaf_label_counts))}")
+    print(f"max: {str(np.max(leaf_label_counts))}")
+    print(f"mean: {str(np.mean(leaf_label_counts))}")
+    print(f"median: {str(np.median(leaf_label_counts))}")
+    print(f"std: {str(np.std(leaf_label_counts))}")
+    breakpoint()
 
 
-# if __name__ == "__main__":
-#     bioasq = BioASQInstanceLabelsDataset()
-#     mesh_leaf_label_stats(bioasq)
+if __name__ == "__main__":
+    bioasq = BioASQInstanceLabelsDataset()
+    mesh_leaf_label_stats(bioasq)
