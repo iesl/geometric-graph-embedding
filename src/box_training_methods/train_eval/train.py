@@ -188,6 +188,7 @@ def setup(**config):
                     model=model,
                     dl=train_dataloader,
                     batchsize=2 ** config["log_eval_batch_size"],
+                    output_dir=config["output_dir"],
                 )
             )
         elif config["task"] == "multilabel_classification":

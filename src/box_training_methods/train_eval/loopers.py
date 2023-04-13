@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import time
+import os
+import json
 from typing import *
 
 import attr
@@ -80,7 +82,7 @@ class GraphModelingTrainLooper:
                     self.train_loop(epoch)
 
                     for eval_looper in self.eval_loopers:
-                        eval_looper.loop()
+                        eval_looper.loop(epoch=epoch)
 
                     # 2D TBOX VISUALIZATION INFO
                     if isinstance(self.model, TBox):
@@ -422,9 +424,10 @@ class GraphModelingEvalLooper:
     batchsize: int
     logger: Logger = attr.ib(factory=Logger)
     summary_func: Callable[Dict] = lambda z: None
+    output_dir: str = None
 
     @torch.no_grad()
-    def loop(self) -> Dict[str, Any]:
+    def loop(self, epoch: Optional[int] = None) -> Dict[str, Any]:
         self.model.eval()
 
         logger.debug("Evaluating model predictions on full adjacency matrix")
@@ -486,7 +489,17 @@ class GraphModelingEvalLooper:
         predictions = (prediction_scores > metrics["threshold"]) * (
             ~np.eye(num_nodes, dtype=bool)
         )
-
+        if self.output_dir is not None:
+            breakpoint()
+            with open(os.path.join(self.output_dir, f'predictions.epoch-{epoch}.npy'), 'wb') as f:
+                np.save(f, coo_matrix(predictions), allow_pickle=True)
+            breakpoint()
+            with open(os.path.join(self.output_dir, f'prediction_scores.epoch-{epoch}.npy'), 'wb') as f:
+                np.save(f, prediction_scores, allow_pickle=True)
+            breakpoint()
+            with open(os.path.join(self.output_dir, f'metrics.epoch-{epoch}.json'), 'w') as f:
+                json.dump(metrics, f, indent=4, sort_keys=True)
+            breakpoint()
         return metrics, coo_matrix(predictions)
 
 
