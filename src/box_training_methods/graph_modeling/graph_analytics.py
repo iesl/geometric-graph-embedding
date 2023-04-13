@@ -1,13 +1,13 @@
 import torch
 import os
 import numpy as np
-# import networkx as nx
+import networkx as nx
 import matplotlib.pyplot as plt
 import json
 import time
 import pickle
 
-# from box_training_methods.graph_modeling.dataset import edges_and_num_nodes_from_npz, HierarchicalNegativeEdges
+from box_training_methods.graph_modeling.dataset import edges_and_num_nodes_from_npz#, HierarchicalNegativeEdges
 
 
 def save_histogram(negatives_per_node, random_or_hierarchical, graph_id, save_dir):
@@ -40,6 +40,25 @@ def plot_node_histogram(negative_samples, save_path, num_ticks=10):
     plt.clf()
 
 
+def plot_random_hns_diff_histogram(diffs, save_path, graph_id, num_ticks=10):
+
+    # create x-axis values
+    x_vals = range(len(diffs))
+    
+    # plot the line graph
+    plt.plot(x_vals, diffs)
+    
+    # add labels and title
+    plt.xlabel('Nodes in order of decreasing HNS gain')
+    plt.ylabel('# fewer nodes required by HNS than random')
+    plt.suptitle('HNS gains over Random Negative Sampling')
+    plt.title(graph_id, fontsize=10)
+
+    # save the plot
+    plt.savefig(save_path)
+    plt.clf()
+
+
 def num_nodes_to_hns_roots(graph_npz_path, save_dir):
 
     graph_id = "-".join(graph_npz_path.split("/")[-3:])[:-len(".npz")]
@@ -52,6 +71,31 @@ def num_nodes_to_hns_roots(graph_npz_path, save_dir):
     save_path = save_dir+graph_id+'.png'
 
     plot_node_histogram(node_hns_negative_samples, save_path)
+
+
+def random_negatives_minus_hns_negatives(graph_npz_path, save_dir):
+
+    graph_id = "-".join(graph_npz_path.split("/")[-3:])[:-len(".npz")]
+    print(graph_id)
+
+    negative_roots = torch.load(graph_npz_path.rstrip('.npz') + '.hns/negative_roots.pt')
+
+    PAD = negative_roots.shape[0]
+    node_hns_negative_samples = (negative_roots != PAD).int().sum(dim=-1)
+    save_path = save_dir+graph_id+'.png'
+
+    edges, num_nodes = edges_and_num_nodes_from_npz(graph_npz_path)
+    G = nx.DiGraph()
+    G.add_edges_from((edges).tolist())
+
+    node_random_negative_samples = []
+    for n in range(num_nodes):
+        node_random_negative_samples.append(num_nodes - len([x for x in G.predecessors(n)]))
+    node_random_negative_samples = torch.tensor(node_random_negative_samples)
+
+    random_minus_hns_descending_order = sorted(list(node_random_negative_samples - node_hns_negative_samples), reverse=True)
+
+    plot_random_hns_diff_histogram(random_minus_hns_descending_order, save_path, graph_id)
 
 
 def graph_analytics(graph_npz_path, save_dir):
@@ -173,7 +217,8 @@ def generate_analytics_for_graphs_in_dir(graphs_root="/work/pi_mccallum_umass_ed
                     continue
 
                 graph_npz_path = "/".join([root, f])
-                num_nodes_to_hns_roots(graph_npz_path, save_dir)
+                # num_nodes_to_hns_roots(graph_npz_path, save_dir)
+                random_negatives_minus_hns_negatives(graph_npz_path, save_dir)
                 # stats = graph_analytics(graph_npz_path, save_dir)
                 # all_stats.append(stats)
 
@@ -191,5 +236,5 @@ if __name__ == '__main__':
     # graph_analytics("/Users/brozonoyer/Desktop/IESL/box-training-methods/data/graphs/hierarchical_negative_sampling_debugging_graphs/log_num_nodes=12-transitive_closure=False-which=balanced-tree/1196640715.npz",
     #                 save_dir="/Users/brozonoyer/Desktop/IESL/box-training-methods/figs/graph_analytics/")
     all_stats = generate_analytics_for_graphs_in_dir(graphs_root="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graphs13/",
-                                                     save_dir="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graph_analytics/hns_histograms/")
+                                                     save_dir="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graph_analytics/hns_histograms.v2/")
     # all_stats_to_csv(all_stats, "/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graph_analytics/graphs13_stats.csv")
