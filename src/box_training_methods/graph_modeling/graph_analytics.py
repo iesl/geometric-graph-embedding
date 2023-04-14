@@ -238,3 +238,19 @@ if __name__ == '__main__':
     all_stats = generate_analytics_for_graphs_in_dir(graphs_root="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graphs13/",
                                                      save_dir="/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graph_analytics/hns_histograms.v2/")
     # all_stats_to_csv(all_stats, "/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/data/graph_analytics/graphs13_stats.csv")
+
+
+
+#   'data/graphs13/balanced_tree/branching=10-log_num_nodes=13-transitive_closure=False', 
+#   'data/graphs13/balanced_tree/branching=5-log_num_nodes=13-transitive_closure=False', 
+#   'data/graphs13/balanced_tree/branching=2-log_num_nodes=13-transitive_closure=False',
+#   'data/graphs13/balanced_tree/branching=3-log_num_nodes=13-transitive_closure=False',
+#   'data/graphs13/nested_chinese_restaurant_process/alpha=100-log_num_nodes=13-transitive_closure=False',
+#   'data/graphs13/nested_chinese_restaurant_process/alpha=500-log_num_nodes=13-transitive_closure=False',
+#   'data/graphs13/nested_chinese_restaurant_process/alpha=10-log_num_nodes=13-transitive_closure=False',
+#   'data/graphs13/price/c=0.01-gamma=1.0-log_num_nodes=13-m=10-transitive_closure=False',
+#   'data/graphs13/price/c=0.1-gamma=1.0-log_num_nodes=13-m=1-transitive_closure=False',
+#   'data/graphs13/price/c=0.01-gamma=1.0-log_num_nodes=13-m=1-transitive_closure=False',
+#   'data/graphs13/price/c=0.1-gamma=1.0-log_num_nodes=13-m=5-transitive_closure=False',
+#   'data/graphs13/price/c=0.01-gamma=1.0-log_num_nodes=13-m=5-transitive_closure=False',
+#   'data/graphs13/price/c=0.1-gamma=1.0-log_num_nodes=13-m=10-transitive_closure=False'

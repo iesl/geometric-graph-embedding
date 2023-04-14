@@ -97,7 +97,6 @@ def training(config: Dict) -> None:
         f.write(json.dumps(metrics))
 
     if config["save_model"]:
-        breakpoint()
         if config["task"] == "graph_modeling":
             model_checkpoint.save_to_disk(None)
         elif config["task"] in {"multilabel_classification", "bioasq"}:

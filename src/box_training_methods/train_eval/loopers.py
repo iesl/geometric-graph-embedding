@@ -81,6 +81,9 @@ class GraphModelingTrainLooper:
                 with torch.enable_grad():
                     self.train_loop(epoch)
 
+                    # save model at epoch to wandb.run.dir (e.g. /work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/wandb/run-20230403_234846-86c2gllp/files/)
+                    self.save_model.filename = f'learned_model.epoch-{epoch}.pt'
+                    self.save_model.save_to_disk()
                     for eval_looper in self.eval_loopers:
                         eval_looper.loop(epoch=epoch)
 
@@ -489,17 +492,13 @@ class GraphModelingEvalLooper:
         predictions = (prediction_scores > metrics["threshold"]) * (
             ~np.eye(num_nodes, dtype=bool)
         )
-        if self.output_dir is not None:
-            breakpoint()
-            with open(os.path.join(self.output_dir, f'predictions.epoch-{epoch}.npy'), 'wb') as f:
-                np.save(f, coo_matrix(predictions), allow_pickle=True)
-            breakpoint()
-            with open(os.path.join(self.output_dir, f'prediction_scores.epoch-{epoch}.npy'), 'wb') as f:
-                np.save(f, prediction_scores, allow_pickle=True)
-            breakpoint()
-            with open(os.path.join(self.output_dir, f'metrics.epoch-{epoch}.json'), 'w') as f:
-                json.dump(metrics, f, indent=4, sort_keys=True)
-            breakpoint()
+        # if self.output_dir is not None:
+        #     with open(os.path.join(self.output_dir, f'predictions.epoch-{epoch}.npy'), 'wb') as f:
+        #         np.save(f, coo_matrix(predictions), allow_pickle=True)
+        #     with open(os.path.join(self.output_dir, f'prediction_scores.epoch-{epoch}.npy'), 'wb') as f:
+        #         np.save(f, prediction_scores, allow_pickle=True)
+        #     with open(os.path.join(self.output_dir, f'metrics.epoch-{epoch}.json'), 'w') as f:
+        #         json.dump(metrics, f, indent=4, sort_keys=True)
         return metrics, coo_matrix(predictions)
 
 
