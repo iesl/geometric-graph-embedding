@@ -552,8 +552,9 @@ class HierarchicalNegativeEdges:
 
         node_and_ancestors = set(self.A_[:, node].nonzero()[0]).union({node})
         descendants_of_node = set(self.A_[torch.tensor([node])].nonzero()[1])
+        children_of_node = set(self.A[torch.tensor([node])].nonzero()[1])
         positives = node_and_ancestors.union(descendants_of_node)
-        negatives = self.nodes.difference(positives)
+        negatives = self.nodes.difference(positives).union(children_of_node)
 
         # mask out the positives from TC-adjacency-matrix
         A__ = self.A_.copy()

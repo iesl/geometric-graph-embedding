@@ -24,7 +24,7 @@ def cache_hns(graph_npz_path, graph_hns_dir):
         pickle.dump(node_to_num_descendants, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def traverse_and_cache_hns(graphs_dir, graph_types=['price']): # 'balanced_tree', 'nested_chinese_restaurant_process', 'price']):
+def traverse_and_cache_hns(graphs_dir, graph_types=['balanced_tree', 'nested_chinese_restaurant_process', 'price']):
 
     for graph_type in graph_types:
         graph_root = os.path.join(graphs_dir, graph_type)
