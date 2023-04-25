@@ -9,10 +9,16 @@ import torch
 from torch.nn import Module
 from pytorch_utils import TensorDataLoader, cuda_if_available
 
-from .dataset import edges_from_hierarchy_edge_list, ARFFReader, InstanceLabelsDataset
+from .dataset import edges_from_hierarchy_edge_list, ARFFReader, InstanceLabelsDataset, BioASQInstanceLabelsDataset
 from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, \
-    HierarchicalNegativeEdgesBatched, HierarchicalNegativeEdgesDebug, GraphDataset
+    HierarchicalNegativeEdges, GraphDataset
 
+from box_training_methods.models.temps import (
+    GlobalTemp,
+    PerDimTemp,
+    PerEntityTemp,
+    PerEntityPerDimTemp,
+)
 from box_training_methods.models.box import BoxMinDeltaSoftplus, TBox
 from box_training_methods.graph_modeling.loss import (
     BCEWithLogsNegativeSamplingLoss,
@@ -21,8 +27,8 @@ from box_training_methods.graph_modeling.loss import (
     MaxMarginOENegativeSamplingLoss,
     PushApartPullTogetherLoss,
 )
-from .instance_encoder import InstanceHardBoxEncoder
-from .instance_scorers.instance_as_box_scorers.hard_box_scorer import HardBoxScorer
+from box_training_methods.multilabel_classification.instance_encoder import InstanceAsPointEncoder, InstanceAsBoxEncoder
+from box_training_methods.multilabel_classification.instance_scorers.instance_as_box_scorers.hard_box_scorer import HardBoxScorer
 
 
 __all__ = [
@@ -32,7 +38,7 @@ __all__ = [
 ]
 
 
-def setup_model(num_labels: int, device: Union[str, torch.device], **config) -> Tuple[Module, Callable]:
+def setup_model(num_labels: int, instance_dim: int, device: Union[str, torch.device], **config) -> Tuple[Module, Callable]:
     model_type = config["model_type"].lower()
     if model_type == "gumbel_box":
         box_model = BoxMinDeltaSoftplus(
@@ -78,11 +84,12 @@ def setup_model(num_labels: int, device: Union[str, torch.device], **config) -> 
         )
         label_label_loss_func = PushApartPullTogetherLoss(config["negative_weight"])
     else:
-        raise ValueError(f"Model type {config['model_type']} does not exist")
+        raise ValueError(f'Model type {config["model_type"]} does not exist')
     box_model.to(device)
 
     # TODO args from click
-    instance_encoder = InstanceHardBoxEncoder(input_dim=77, hidden_dim=64)
+    instance_encoder = InstanceAsBoxEncoder(instance_dim=instance_dim, hidden_dim=64, output_dim=config["dim"])
+    instance_encoder.to(device)
 
     # TODO args from click
     scorer = HardBoxScorer()
@@ -107,8 +114,8 @@ def setup_training_data(device: Union[str, torch.device], **config) -> \
     hierarchy_edge_list_file = data_dir / "hierarchy.edgelist"
 
     # 1. read label taxonomy into GraphDataset
-    taxonomy_edges, taxonomy_label_encoder = edges_from_hierarchy_edge_list(edge_file=hierarchy_edge_list_file)
-    label_set = taxonomy_label_encoder.classes_
+    taxonomy_edges, label_encoder = edges_from_hierarchy_edge_list(edge_file=hierarchy_edge_list_file)
+    label_set = label_encoder.classes_
     num_labels = len(label_set)
 
     if config["negative_sampler"] == "random":
@@ -120,9 +127,11 @@ def setup_training_data(device: Union[str, torch.device], **config) -> \
             permutation_option=config["negatives_permutation_option"],
         )
     elif config["negative_sampler"] == "hierarchical":
-        negative_sampler = HierarchicalNegativeEdgesBatched(
+        negative_sampler = HierarchicalNegativeEdges(
             edges=taxonomy_edges,
-            negative_ratio=config["negative_ratio"]
+            negative_ratio=config["negative_ratio"],
+            sampling_strategy=config["hierarchical_negative_sampling_strategy"],
+            # cache_dir=config["data_path"] + ".hns",
         )
     else:
         raise NotImplementedError
@@ -135,20 +144,20 @@ def setup_training_data(device: Union[str, torch.device], **config) -> \
     reader = ARFFReader(num_labels=num_labels)
 
     data_train = list(reader.read_internal(str(data_dir / "train-normalized.arff")))
-    instances_train = torch.tensor([i['x'] for i in data_train], device=device)
+    instance_feats_train = torch.tensor([i['x'] for i in data_train], device=device)
     labels_train = [i['labels'] for i in data_train]
 
     data_dev = list(reader.read_internal(str(data_dir / "dev-normalized.arff")))
-    instances_dev = torch.tensor([i['x'] for i in data_dev], device=device)
+    instance_feats_dev = torch.tensor([i['x'] for i in data_dev], device=device)
     labels_dev = [i['labels'] for i in data_dev]
 
     data_test = list(reader.read_internal(str(data_dir / "test-normalized.arff")))
-    instances_test = torch.tensor([i['x'] for i in data_test], device=device)
+    instance_feats_test = torch.tensor([i['x'] for i in data_test], device=device)
     labels_test = [i['labels'] for i in data_test]
 
-    train_dataset = InstanceLabelsDataset(instances=instances_train, labels=labels_train, label_set=label_set)
-    dev_dataset = InstanceLabelsDataset(instances=instances_dev, labels=labels_dev, label_set=label_set)
-    test_dataset = InstanceLabelsDataset(instances=instances_test, labels=labels_test, label_set=label_set)
+    train_dataset = InstanceLabelsDataset(instance_feats=instance_feats_train, labels=labels_train, label_encoder=label_encoder)
+    dev_dataset = InstanceLabelsDataset(instance_feats=instance_feats_dev, labels=labels_dev, label_encoder=label_encoder)
+    test_dataset = InstanceLabelsDataset(instance_feats=instance_feats_test, labels=labels_test, label_encoder=label_encoder)
 
     # TODO update these stats
     # logger.info(f"Number of edges in dataset: {dataset.num_edges:,}")
@@ -162,3 +171,47 @@ def setup_training_data(device: Union[str, torch.device], **config) -> \
     # logger.debug(f"Total time spent loading data: {time() - start:0.1f} seconds")
     #
     return taxonomy_dataset, train_dataset, dev_dataset, test_dataset
+
+
+def setup_mesh_training_data(device: Union[str, torch.device], **config):
+    
+    start = time()
+    bioasq_path = Path(config["data_path"])
+    mesh_parent_child_path = Path(config["mesh_parent_child_mapping_path"])
+    mesh_name_id_path = Path(config["mesh_name_id_mapping_path"])
+
+    # 1. read label taxonomy
+    mesh_edges, label_encoder = edges_from_hierarchy_edge_list(edge_file=mesh_parent_child_path, mesh=True)
+    label_set = label_encoder.classes_
+    num_labels = len(label_set)
+
+    if config["negative_sampler"] == "random":
+        negative_sampler = RandomNegativeEdges(
+            num_nodes=num_labels,
+            negative_ratio=config["negative_ratio"],
+            avoid_edges=None,  # TODO understand the functionality in @mboratko's code
+            device=device,
+            permutation_option=config["negatives_permutation_option"],
+        )
+    elif config["negative_sampler"] == "hierarchical":
+        negative_sampler = HierarchicalNegativeEdges(
+            edges=taxonomy_edges,
+            negative_ratio=config["negative_ratio"],
+            sampling_strategy=config["hierarchical_negative_sampling_strategy"],
+            # cache_dir=config["data_path"] + ".hns",
+        )
+    else:
+        raise NotImplementedError
+
+    mesh_dataset = GraphDataset(
+        mesh_edges, num_nodes=num_labels, negative_sampler=negative_sampler
+    )
+
+    # 2. instance-labels
+    bioasq_dataset = BioASQInstanceLabelsDataset(
+        file_path=bioasq_path,
+        parent_child_mapping_path=mesh_parent_child_path
+        name_id_mapping_path=mesh_name_id_path
+    )
+    
+    return mesh_dataset, bioasq_dataset

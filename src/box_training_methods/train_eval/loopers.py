@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import time
+import os
+import json
 from typing import *
 
 import attr
@@ -11,6 +13,7 @@ from scipy.sparse import coo_matrix
 from torch.nn import Module
 from torch.utils.data import DataLoader
 from tqdm.autonotebook import trange, tqdm
+from itertools import chain
 
 from pytorch_utils.exceptions import StopLoopingException
 from pytorch_utils.loggers import Logger
@@ -21,7 +24,7 @@ from box_training_methods.metrics import *
 ### VISUALIZATION IMPORTS ONLY
 from box_training_methods.visualization.plot_2d_tbox import plot_2d_tbox
 from box_training_methods.models.box import TBox
-from box_training_methods.graph_modeling.dataset import RandomNegativeEdges, HierarchicalNegativeEdges
+from box_training_methods.graph_modeling.dataset import create_positive_edges_from_tails, RandomNegativeEdges, HierarchicalNegativeEdges
 neg_sampler_obj_to_str = {
     RandomNegativeEdges: "random",
     HierarchicalNegativeEdges: "hierarchical"
@@ -78,9 +81,11 @@ class GraphModelingTrainLooper:
                 with torch.enable_grad():
                     self.train_loop(epoch)
 
-                    if epoch % 5 == 0:
-                        for eval_looper in self.eval_loopers:
-                            eval_looper.loop()
+                    # save model at epoch to wandb.run.dir (e.g. /work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/wandb/run-20230403_234846-86c2gllp/files/)
+                    self.save_model.filename = f'learned_model.epoch-{epoch}.pt'
+                    self.save_model.save_to_disk()
+                    for eval_looper in self.eval_loopers:
+                        eval_looper.loop(epoch=epoch)
 
                     # 2D TBOX VISUALIZATION INFO
                     if isinstance(self.model, TBox):
@@ -235,7 +240,8 @@ class MultilabelClassificationTrainLooper:
     early_stopping: Callable = lambda z: None
     logger: Logger = attr.ib(factory=Logger)
     summary_func: Callable[Dict] = lambda z: None
-    save_model: Callable[Module] = lambda z: None
+    save_box_model: Callable[Module] = lambda z: None
+    save_instance_model: Callable[Module] = lambda z: None
     log_interval: Optional[Union[IntervalConditional, int]] = attr.ib(
         default=None, converter=IntervalConditional.interval_conditional_converter
     )
@@ -267,20 +273,23 @@ class MultilabelClassificationTrainLooper:
         finally:
             self.logger.commit()
 
-            # TODO adapt this to MLC models
-            # # load in the best model
-            # previous_device = next(iter(self.model.parameters())).device
-            # self.model.load_state_dict(self.save_model.best_model_state_dict())
-            # self.model.to(previous_device)
-            #
-            # # evaluate
-            # metrics = []
-            # predictions_coo = []
+            # load in the best models
+            previous_device = next(iter(self.box_model.parameters())).device
+            self.box_model.load_state_dict(self.save_box_model.best_model_state_dict())
+            self.box_model.to(previous_device)
+
+            self.instance_model.load_state_dict(self.save_instance_model.best_model_state_dict())
+            self.instance_model.to(previous_device)
+
+            # TODO!!!
+            # evaluate
+            metrics = []
+            predictions_coo = []
             # for eval_looper in self.eval_loopers:
             #     metric, prediction_coo = eval_looper.loop()
             #     metrics.append(metric)
             #     predictions_coo.append(prediction_coo)
-            # return metrics, predictions_coo
+            return metrics, predictions_coo
 
     def train_loop(self, epoch: Optional[int] = None):
         """
@@ -288,48 +297,61 @@ class MultilabelClassificationTrainLooper:
         :return: list of losses per batch
         """
 
+        examples_this_epoch = 0
+        examples_in_single_epoch = len(self.instance_label_dl.dataset)
+        last_time_stamp = time.time()
+        num_batch_passed = 0
         label_label_iter = iter(self.label_label_dl)
-
-        for iteration, instance_label_batch_in in enumerate(
+        for iteration, batch in enumerate(
             tqdm(self.instance_label_dl, desc=f"[{self.name}] Batch", leave=False)
         ):
 
-            instance_batch_in, label_batch_one_hots = instance_label_batch_in
+            # (batch_size, instance_feat_dim), (batch_size,)
+            instance_batch_in, label_batch_in = batch
 
-            try:
-                label_label_batch_in = next(label_label_iter)
-            except StopIteration:
-                label_label_iter = iter(self.label_label_dl)
-                label_label_batch_in = next(label_label_iter)
+            # TODO RandomNegativeEdges currently doesn't store adjacency matrix
+            positive_label_label_idxs = create_positive_edges_from_tails(tails=label_batch_in.cpu(), A=self.label_label_dl.dataset.negative_sampler.A)  # FIXME only HierarchicalNegativeEdges has A attribute, not RandomNegativeEdges
+            negative_label_label_idxs = self.label_label_dl.dataset.negative_sampler(positive_label_label_idxs)
+            label_label_batch_in = torch.cat([positive_label_label_idxs.unsqueeze(1), negative_label_label_idxs], dim=1)
 
-            # TODO for each (instance_i, label_i), get more label-label info about label_i
-            #  modified GraphDataloader(label_i) -> more edges about label_i
+            # try:
+            #     label_label_batch_in = next(label_label_iter)
+            # except StopIteration:
+            #     label_label_iter = iter(self.label_label_dl)
+            #     label_label_batch_in = next(label_label_iter)
 
             self.opt.zero_grad()
 
-            # compute L_G
+            num_in_batch = instance_batch_in.shape[0]
+            self.looper_metrics["Total Examples"] += num_in_batch
+            examples_this_epoch += num_in_batch
+
+            # compute L_G for labels related to instance
             label_label_batch_out = self.box_model(label_label_batch_in)
-            label_label_loss = self.label_label_loss_func(label_label_batch_out)
-            label_label_loss = label_label_loss.sum(dim=0)
+            label_label_loss = self.label_label_loss_func(label_label_batch_out).sum(dim=0)
 
             # compute instance encoding
-            instance_encodings = self.instance_model(instance_batch_in)
+            # TODO need to tailor loss function to instance-label without negative samples
+            # TODO pass in padding mask for exact hierarchical negative sampling
+            instance_boxes = self.instance_model(instance_batch_in)     # (bsz, 2 [-/+], dim)
+            instance_label_batch_out = self.box_model.forward(idxs=label_batch_in, instances=instance_boxes)
+            
+            # FIXME currently the loss fn expects a specified shape with negatives
+            # instance_label_loss = self.label_label_loss_func(instance_label_batch_out).sum(dim=0)
 
-            # compute L_nll
-            # TODO generic API for returning box params
-            # TODO scoring: self.scorer(instance_encodings, labels_boxes, label_batch_one_hots)
-            breakpoint()
+            loss = label_label_loss # + instance_label_loss
 
             if torch.isnan(loss).any():
                 raise StopLoopingException("NaNs in loss")
             self.running_losses.append(loss.detach().item())
             loss.backward()
 
-            for param in self.model.parameters():
+            for param in chain(self.box_model.parameters(), self.instance_model.parameters()):
                 if param.grad is not None:
                     if torch.isnan(param.grad).any():
                         raise StopLoopingException("NaNs in grad")
 
+            num_batch_passed += 1
             # TODO: Refactor the following
             self.opt.step()
             # If you have a scheduler, keep track of the learning rate
@@ -344,6 +366,36 @@ class MultilabelClassificationTrainLooper:
                         self.looper_metrics[f"Learning Rate (Group {i})"] = param_group[
                             "lr"
                         ]
+
+            # Check performance every self.log_interval number of examples
+            last_log = self.log_interval.last
+
+            if self.log_interval(self.looper_metrics["Total Examples"]):
+                current_time_stamp = time.time()
+                time_spend = (current_time_stamp - last_time_stamp) / num_batch_passed
+                last_time_stamp = current_time_stamp
+                num_batch_passed = 0
+                self.logger.collect({"avg_time_per_batch": time_spend})
+
+                self.logger.collect(self.looper_metrics)
+                mean_loss = sum(self.running_losses) / (
+                    self.looper_metrics["Total Examples"] - last_log
+                )
+                metrics = {"Mean Loss": mean_loss}
+                self.logger.collect(
+                    {
+                        **{
+                            f"[{self.name}] {metric_name}": value
+                            for metric_name, value in metrics.items()
+                        },
+                        "Epoch": epoch + examples_this_epoch / examples_in_single_epoch,
+                    }
+                )
+                self.logger.commit()
+                self.running_losses = []
+                self.update_best_metrics_(metrics)
+                self.save_if_best_(self.best_metrics["Mean Loss"])
+                self.early_stopping(self.best_metrics["Mean Loss"])
 
     def update_best_metrics_(self, metrics: Dict[str, float]) -> None:
         for name, comparison in self.best_metrics_comparison_functions.items():
@@ -362,7 +414,8 @@ class MultilabelClassificationTrainLooper:
 
     def save_if_best_(self, best_metric) -> None:
         if best_metric != self.previous_best:
-            self.save_model(self.model)
+            self.save_box_model(self.box_model)
+            self.save_instance_model(self.instance_model)
             self.previous_best = best_metric
 
 
@@ -374,9 +427,10 @@ class GraphModelingEvalLooper:
     batchsize: int
     logger: Logger = attr.ib(factory=Logger)
     summary_func: Callable[Dict] = lambda z: None
+    output_dir: str = None
 
     @torch.no_grad()
-    def loop(self) -> Dict[str, Any]:
+    def loop(self, epoch: Optional[int] = None) -> Dict[str, Any]:
         self.model.eval()
 
         logger.debug("Evaluating model predictions on full adjacency matrix")
@@ -438,7 +492,13 @@ class GraphModelingEvalLooper:
         predictions = (prediction_scores > metrics["threshold"]) * (
             ~np.eye(num_nodes, dtype=bool)
         )
-
+        # if self.output_dir is not None:
+        #     with open(os.path.join(self.output_dir, f'predictions.epoch-{epoch}.npy'), 'wb') as f:
+        #         np.save(f, coo_matrix(predictions), allow_pickle=True)
+        #     with open(os.path.join(self.output_dir, f'prediction_scores.epoch-{epoch}.npy'), 'wb') as f:
+        #         np.save(f, prediction_scores, allow_pickle=True)
+        #     with open(os.path.join(self.output_dir, f'metrics.epoch-{epoch}.json'), 'w') as f:
+        #         json.dump(metrics, f, indent=4, sort_keys=True)
         return metrics, coo_matrix(predictions)
 
 

@@ -12,18 +12,20 @@ from box_training_methods.utils import tiny_value_of_dtype
 from box_training_methods import metric_logger
 
 __all__ = [
-    "InstanceHardBoxEncoder",
+    "InstanceAsPointEncoder",
+    "InstanceAsBoxEncoder",
 ]
 
 
-class InstanceHardBoxEncoder(Module):
+class InstanceAsPointEncoder(Module):
 
-    def __init__(self, input_dim: int = 77, hidden_dim: int = 64, constrain_deltas_fn: str = "softplus"):
+    def __init__(self, instance_dim: int, hidden_dim: int, output_dim: int):
         super().__init__()
-        self.l1 = torch.nn.Linear(input_dim, hidden_dim)
-        self.proj_min = torch.nn.Linear(hidden_dim, 1)
-        self.proj_delta = torch.nn.Linear(hidden_dim, 1)
-        self.constrain_deltas_fn = constrain_deltas_fn
+
+        # TODO instantiate embedding lookup layer with instances
+
+        self.l1 = torch.nn.Linear(instance_dim, hidden_dim)
+        self.l2 = torch.nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x):
         """
@@ -34,21 +36,30 @@ class InstanceHardBoxEncoder(Module):
         Returns:
 
         """
-        h = F.sigmoid(self.l1(x))
-        min, delta = self.proj_min(h), self.proj_delta(h)
+        h = F.relu(self.l1(x))
+        instance_point = self.l2(h)
+        return instance_point
 
-        if self.constrain_deltas_fn == "sqr":
-            delta = torch.pow(delta, 2)
-        elif self.constrain_deltas_fn == "exp":
-            delta = torch.exp(delta)
-        elif self.constrain_deltas_fn == "softplus":
-            delta = F.softplus(delta, beta=1, threshold=20)
-        elif self.constrain_deltas_fn == "proj":  # "projected gradient descent" in forward method (just clipping)
-            delta = delta.clamp_min(eps)
 
-        # TODO temperature — when temp = 0, degrades to HardBox, otherwise TBox
+class InstanceAsBoxEncoder(InstanceAsPointEncoder):
 
-        max = min + delta
-        instance_encoding = torch.hstack([min, max])    # (batch_size, 2)
+    def __init__(self, instance_dim: int, hidden_dim: int, output_dim: int):
+        super().__init__(instance_dim, hidden_dim, output_dim)
+        
+        self.delta = torch.tensor(1.0, requires_grad=False)
 
-        return instance_encoding
+    def forward(self, x):
+        """
+
+        Args:
+            x: (batch_size, instance_dim)
+
+        Returns:
+
+        """
+
+        instance_min = super().forward(x)
+        instance_max = instance_min + self.delta
+        
+        instance_box = torch.stack([instance_min, -instance_max], dim=-2)
+        return instance_box

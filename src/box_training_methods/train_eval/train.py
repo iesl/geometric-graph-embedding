@@ -39,7 +39,8 @@ def training(config: Dict) -> None:
     """
 
     if config["wandb"]:
-        wandb.init(settings=wandb.Settings(start_method="fork"))
+        # wandb.init(settings=wandb.Settings(start_method="fork"))
+        wandb.init(entity="hierarchical-negative-sampling", project="hns")
         wandb.config.update(config, allow_val_change=True)
         config = wandb.config
         run_dir = Path(wandb.run.dir)
@@ -51,9 +52,7 @@ def training(config: Dict) -> None:
     torch.manual_seed(config["seed"])
     random.seed(config["seed"])
 
-    # TODO setup imports task-specific setup methods located within each task's train_eval.py
     models, train_looper = setup(**config)
-    # TODO dataset and dataloader aren't used in this function. Have setup(**config) return just model, train_looper?
 
     if config["wandb"]:
         metric_logger.metric_logger = WandBLogger()
@@ -66,11 +65,15 @@ def training(config: Dict) -> None:
     for eval_looper in train_looper.eval_loopers:
         eval_looper.logger = train_looper.logger
 
-    model_checkpoint = ModelCheckpoint(run_dir)
-    if isinstance(train_looper, GraphModelingTrainLooper) or \
-            isinstance(train_looper, MultilabelClassificationTrainLooper):
-        logger.debug("Will save best model in RAM (but not on disk) for evaluation")
+    logger.debug("Will save best model in RAM (but not on disk) for evaluation")
+    if config["task"] == "graph_modeling":
+        model_checkpoint = ModelCheckpoint(run_dir)
         train_looper.save_model = model_checkpoint
+    elif config["task"] in {"multilabel_classification", "bioasq"}:
+        box_model_checkpoint = ModelCheckpoint(run_dir, "learned_box_model.pt")
+        instance_model_checkpoint = ModelCheckpoint(run_dir, "learned_instance_model.pt")
+        train_looper.save_box_model = box_model_checkpoint
+        train_looper.save_instance_model = instance_model_checkpoint
 
     # TODO standardize what the train_looper returns across tasks - what is predictions_coo?
     metrics, predictions_coo = train_looper.loop(config["epochs"])
@@ -94,7 +97,11 @@ def training(config: Dict) -> None:
         f.write(json.dumps(metrics))
 
     if config["save_model"]:
-        model_checkpoint.save_to_disk(None)
+        if config["task"] == "graph_modeling":
+            model_checkpoint.save_to_disk(None)
+        elif config["task"] in {"multilabel_classification", "bioasq"}:
+            box_model_checkpoint.save_to_disk(None)
+            instance_model_checkpoint.save_to_disk(None)
 
     # TODO standardize saving predictions for predictions from all tasks (graphs, labels, etc.)
     if config["save_prediction"]:
@@ -140,6 +147,8 @@ def setup(**config):
         train_dataloader = TensorDataLoader(train_dataset, batch_size=2 ** config["log_batch_size"], shuffle=True)
         dev_dataloader = TensorDataLoader(dev_dataset, batch_size=2 ** config["log_batch_size"], shuffle=False)
         test_dataloader = TensorDataLoader(test_dataset, batch_size=2 ** config["log_batch_size"], shuffle=False)
+    elif config["task"] == "bioasq":
+        taxonomy_dataset, train_dataset, test_dataset = task_train_eval.setup_mesh_training_data(device, **config)
 
     if isinstance(config["log_interval"], float):
         config["log_interval"] = math.ceil(len(train_dataset) * config["log_interval"])
@@ -153,7 +162,7 @@ def setup(**config):
         model, loss_func = task_train_eval.setup_model(train_dataset.num_nodes, device, **config)
     elif config["task"] == "multilabel_classification":
         box_model, instance_encoder, scorer, label_label_loss_func = \
-            task_train_eval.setup_model(taxonomy_dataset.num_nodes, device, **config)
+            task_train_eval.setup_model(taxonomy_dataset.num_nodes, train_dataset.instance_dim, device, **config)
 
     # setup optimizer
     if config["task"] == "graph_modeling":
@@ -173,10 +182,12 @@ def setup(**config):
             logger.debug(f"After training, will evaluate on full adjacency matrix")
             eval_loopers.append(
                 GraphModelingEvalLooper(
-                    name="Train",  # this is used for logging to describe the dataset, which is the same data as in train
+                    # name="Train",  # this is used for logging to describe the dataset, which is the same data as in train
+                    name="Eval",  # change this to have separate name for HNS experiments which log F1 at every epoch
                     model=model,
                     dl=train_dataloader,
                     batchsize=2 ** config["log_eval_batch_size"],
+                    output_dir=config["output_dir"],
                 )
             )
         elif config["task"] == "multilabel_classification":

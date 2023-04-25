@@ -7,6 +7,7 @@ from typing import *
 import attr
 import numpy as np
 import pandas as pd
+import pickle
 import torch
 from loguru import logger
 from scipy.sparse import load_npz, csr_matrix
@@ -16,6 +17,7 @@ from torch.utils.data import Dataset, WeightedRandomSampler
 from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence
 
 import networkx as nx
+from scipy.sparse._csr import csr_matrix
 
 from ..enums import PermutationOption
 
@@ -27,6 +29,7 @@ __all__ = [
     "edges_and_num_nodes_from_npz",
     "convert_edges_to_ints",
     "convert_ints_to_edges",
+    "create_positive_edges_from_tails",
     "RandomEdges",
     "RandomNegativeEdges",
     "HierarchicalNegativeEdges",
@@ -179,6 +182,21 @@ def convert_ints_to_edges(ints: LongTensor, num_nodes: int) -> LongTensor:
     return torch.stack(
         (torch.div(ints, num_nodes, rounding_mode="trunc"), ints % num_nodes), dim=-1
     )
+
+
+# TODO figure out whether head or tail resides at position 0
+def create_positive_edges_from_tails(tails: LongTensor, A: csr_matrix) -> LongTensor:
+    """
+
+    :param tails: indices of nodes with shape (batch_size,) whose parents (potentially with >1 multiplicity) must be found and put into edges
+    :param A: sparse adjacency matrix
+    :returns: LongTensor with shape (batch_size+, 2) where [...,0] is the node id of head and [...,1] is the node id of tail
+    """
+    heads, tail_idxs = A[:,tails].nonzero()
+    heads, tail_idxs = LongTensor(heads), LongTensor(tail_idxs)
+    tails = torch.gather(input=tails, dim=0, index=tail_idxs)
+    heads_tails = torch.cat([heads.unsqueeze(-1), tails.unsqueeze(-1)], dim=-1)
+    return heads_tails
 
 
 @attr.s(auto_attribs=True)
@@ -446,8 +464,11 @@ class HierarchicalNegativeEdges:
             else:
                 raise NotImplementedError
 
+            # Weights can't have row of all zeros, because WeightedRandomSampler will error on torch.multinomial with all zeros
+            # This is why we set the weight for EMB_PAD to be a tiny number instead of 0, in case a node has no other
+            #  negative candidates to sample from.
             node_to_weight = torch.FloatTensor([node_to_weight[k] for k in sorted(list(self.nodes))]).unsqueeze(-1)
-            node_to_weight = torch.cat([node_to_weight, torch.tensor([[0.0]])], dim=0)
+            node_to_weight = torch.cat([node_to_weight, torch.tensor([[1e-9]])], dim=0)
             self.weights = torch.nn.Embedding.from_pretrained(node_to_weight, freeze=True, padding_idx=self.EMB_PAD)
 
         t0 = time()
@@ -463,8 +484,10 @@ class HierarchicalNegativeEdges:
         :return: negative edges, a LongTensor of indices with shape (..., negative_ratio, 2)
         """
 
+        device = positive_edges.device
+
         tails = positive_edges[..., 1]
-        negative_candidates = self.negative_roots[tails].long().to(positive_edges.device)
+        negative_candidates = self.negative_roots[tails].long().to(device)
 
         # Implement a policy that returns all negative candidates w/o repetition.
         # This will require a mask to be used inside TBox forward method.
@@ -484,15 +507,21 @@ class HierarchicalNegativeEdges:
 
         else:
 
-            negative_candidates_weights = self.weights.to(positive_edges.device)(negative_candidates).squeeze()
-            negative_idxs = torch.tensor(list(WeightedRandomSampler(weights=negative_candidates_weights,
-                                                                    num_samples=self.negative_ratio,
-                                                                    replacement=True))).to(positive_edges.device)
+            negative_candidates_weights = self.weights.to(device)(negative_candidates).squeeze()
+            
+            wrs = WeightedRandomSampler(weights=negative_candidates_weights, num_samples=self.negative_ratio, replacement=True)
+            wrs = list(wrs)
+            negative_idxs = torch.tensor(wrs).to(device)
             try:
                 negative_nodes = torch.gather(negative_candidates, -1, negative_idxs)
             except RuntimeError:
                 # FIXME this happens when we have a leftover batch of one instance
                 negative_nodes = torch.gather(negative_candidates, -1, negative_idxs.unsqueeze(dim=0))
+
+            # FIXME for nodes with no HNS candidates, this will result in non-hierarchical negative_edges which may impact training
+            #  fix this with masking
+            negative_nodes[negative_nodes == self.EMB_PAD] = -1
+
             tails = tails.unsqueeze(-1).expand(-1, self.negative_ratio)
             negative_edges = torch.stack([negative_nodes, tails], dim=-1)
             return negative_edges
@@ -523,8 +552,9 @@ class HierarchicalNegativeEdges:
 
         node_and_ancestors = set(self.A_[:, node].nonzero()[0]).union({node})
         descendants_of_node = set(self.A_[torch.tensor([node])].nonzero()[1])
+        children_of_node = set(self.A[torch.tensor([node])].nonzero()[1])
         positives = node_and_ancestors.union(descendants_of_node)
-        negatives = self.nodes.difference(positives)
+        negatives = self.nodes.difference(positives).union(children_of_node)
 
         # mask out the positives from TC-adjacency-matrix
         A__ = self.A_.copy()
