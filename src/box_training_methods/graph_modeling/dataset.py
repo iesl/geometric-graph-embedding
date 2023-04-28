@@ -17,7 +17,7 @@ from torch.utils.data import Dataset, WeightedRandomSampler
 from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence
 
 import networkx as nx
-from scipy.sparse._csr import csr_matrix
+#from scipy.sparse._csr import csr_matrix
 
 from ..enums import PermutationOption
 

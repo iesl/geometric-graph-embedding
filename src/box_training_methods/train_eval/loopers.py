@@ -83,7 +83,7 @@ class GraphModelingTrainLooper:
 
                     # save model at epoch to wandb.run.dir (e.g. /work/pi_mccallum_umass_edu/brozonoyer_umass_edu/box-training-methods/wandb/run-20230403_234846-86c2gllp/files/)
                     self.save_model.filename = f'learned_model.epoch-{epoch}.pt'
-                    self.save_model.save_to_disk()
+                    self.save_model.save_to_disk(_=None)
                     for eval_looper in self.eval_loopers:
                         eval_looper.loop(epoch=epoch)
 
@@ -94,9 +94,9 @@ class GraphModelingTrainLooper:
             # VISUALIZE TBOX IN 2D
             if isinstance(self.model, TBox):
                 plot_2d_tbox(box_collection=torch.stack(box_collection),
-                             negative_sampler=neg_sampler_obj_to_str[type(self.dl.dataset.negative_sampler)],
-                             lr=self.opt.param_groups[0]['lr'],
-                             negative_sampling_strategy=self.dl.dataset.negative_sampler.sampling_strategy if isinstance(self.dl.dataset.negative_sampler, HierarchicalNegativeEdges) else None)
+                                negative_sampler=neg_sampler_obj_to_str[type(self.dl.dataset.negative_sampler)],
+                                lr=self.opt.param_groups[0]['lr'],
+                                negative_sampling_strategy=self.dl.dataset.negative_sampler.sampling_strategy if isinstance(self.dl.dataset.negative_sampler, HierarchicalNegativeEdges) else None)
         except StopLoopingException as e:
             logger.warning(str(e))
         finally:
