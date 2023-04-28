@@ -1,4 +1,4 @@
-name: hns_random_grid_search
+name: hns_random_grid_search.tc.save_model
 program: scripts/box-training-methods
 command:
   - ${env}
@@ -30,30 +30,17 @@ metric:
 parameters:
   data_path:
     values: [
-      'data/graphs13/balanced_tree/branching=10-log_num_nodes=13-transitive_closure=False', 
       'data/graphs13/balanced_tree/branching=3-log_num_nodes=13-transitive_closure=True', 
       'data/graphs13/balanced_tree/branching=10-log_num_nodes=13-transitive_closure=True',
-      'data/graphs13/balanced_tree/branching=5-log_num_nodes=13-transitive_closure=False', 
-      'data/graphs13/balanced_tree/branching=2-log_num_nodes=13-transitive_closure=False',
       'data/graphs13/balanced_tree/branching=5-log_num_nodes=13-transitive_closure=True', 
       'data/graphs13/balanced_tree/branching=2-log_num_nodes=13-transitive_closure=True', 
-      'data/graphs13/balanced_tree/branching=3-log_num_nodes=13-transitive_closure=False',
-      'data/graphs13/nested_chinese_restaurant_process/alpha=100-log_num_nodes=13-transitive_closure=False',
-      'data/graphs13/nested_chinese_restaurant_process/alpha=500-log_num_nodes=13-transitive_closure=False',
       'data/graphs13/nested_chinese_restaurant_process/alpha=100-log_num_nodes=13-transitive_closure=True',
       'data/graphs13/nested_chinese_restaurant_process/alpha=500-log_num_nodes=13-transitive_closure=True',
-      'data/graphs13/nested_chinese_restaurant_process/alpha=10-log_num_nodes=13-transitive_closure=False',
       'data/graphs13/nested_chinese_restaurant_process/alpha=10-log_num_nodes=13-transitive_closure=True',
-      'data/graphs13/price/c=0.01-gamma=1.0-log_num_nodes=13-m=10-transitive_closure=False',
       'data/graphs13/price/c=0.1-gamma=1.0-log_num_nodes=13-m=10-transitive_closure=True',
       'data/graphs13/price/c=0.01-gamma=1.0-log_num_nodes=13-m=10-transitive_closure=True',
-      'data/graphs13/price/c=0.1-gamma=1.0-log_num_nodes=13-m=1-transitive_closure=False',
-      'data/graphs13/price/c=0.01-gamma=1.0-log_num_nodes=13-m=1-transitive_closure=False',
       'data/graphs13/price/c=0.1-gamma=1.0-log_num_nodes=13-m=1-transitive_closure=True',
       'data/graphs13/price/c=0.01-gamma=1.0-log_num_nodes=13-m=1-transitive_closure=True',
-      'data/graphs13/price/c=0.1-gamma=1.0-log_num_nodes=13-m=5-transitive_closure=False',
-      'data/graphs13/price/c=0.01-gamma=1.0-log_num_nodes=13-m=5-transitive_closure=False',
       'data/graphs13/price/c=0.1-gamma=1.0-log_num_nodes=13-m=5-transitive_closure=True',
       'data/graphs13/price/c=0.01-gamma=1.0-log_num_nodes=13-m=5-transitive_closure=True',
-      'data/graphs13/price/c=0.1-gamma=1.0-log_num_nodes=13-m=10-transitive_closure=False'
       ]
