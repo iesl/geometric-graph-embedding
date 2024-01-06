@@ -42,6 +42,7 @@ setup(
     ],
     extras_require={
         "price_generation": ["graph_tool"],
+        "wordnet_generation": ["nltk"],
         "test": ["pytest", "hypothesis"],
     },
     entry_points={"console_scripts": ["graph_modeling = graph_modeling.__main__:main"]},

@@ -162,3 +162,14 @@ def hac(outdir, **graph_config):
 def knn_graph(outdir, **graph_config):
     """Writes out a KNN graph"""
     write_graph(outdir, type="knn_graph", **graph_config)
+
+
+@_common_options
+@click.option(
+    "--root_name", default="entity", help="Name of root node to start traversing from",
+)
+@click.option(
+    "--traversal_method", default="dfs", help="How to expand from the root [dfs or bfs]"
+)
+def wordnet(outdir, **graph_config):
+    write_graph(outdir, type="wordnet", **graph_config)
