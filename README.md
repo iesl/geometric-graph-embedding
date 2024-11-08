@@ -1,6 +1,10 @@
 # Graph Modeling
 This repository contains code which accompanies the paper [Capacity and Bias of Learned Geometric Embeddings for Directed Graphs (Boratko et al. 2021)](https://proceedings.neurips.cc/paper/2021/hash/88d25099b103efd638163ecb40a55589-Abstract.html).
 
+Code for the following papers will also be added shortly:
+* [Modeling Transitivity and Cyclicity in Directed Graphs via Binary Code Box Embeddings (Zhang et al. 2022)](https://proceedings.neurips.cc/paper_files/paper/2022/hash/44a1f18afd6d5cc34d7e5c3d8a80f63b-Abstract-Conference.html)
+* [Learning Representations for Hierarchies with Minimal Support (Rozonoyer et al. 2024)](https://openreview.net/forum?id=HFS800reZK) 
+
 This code includes implementations of many geometric embedding methods:
 - Vector Similarity and Distance
 - Bilinear Vector Model [(Nickel et al. 2011)](https://openreview.net/forum?id=H14QEiZ_WS)
